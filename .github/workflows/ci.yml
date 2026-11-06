@@ -95,3 +95,51 @@ jobs:
           python-version: "3.13"
       - run: uv sync --locked
       - run: uv run pytest -p no:cacheprovider
+
+  # Two clean builds of the same checkout must be byte-identical (docs/releases.md). Not a
+  # required check: a regression shows up here without blocking an unrelated pull request.
+  reproducible-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # hatch-vcs reads the version from the tags
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+          download-from-astral-mirror: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Build twice and compare
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          uv sync --locked --group build
+          uv build --no-build-isolation --out-dir /tmp/build-a
+          rm -rf dist build
+          uv build --no-build-isolation --out-dir /tmp/build-b
+          (cd /tmp/build-a && sha256sum -- *.tar.gz *.whl) | tee /tmp/a.sha
+          (cd /tmp/build-b && sha256sum -- *.tar.gz *.whl) > /tmp/b.sha
+          diff /tmp/a.sha /tmp/b.sha
+          {
+            echo "### Reproducible build"
+            echo '```'
+            cat /tmp/a.sha
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
