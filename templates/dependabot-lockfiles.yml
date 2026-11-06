@@ -10,8 +10,8 @@ name: Dependabot lock files
 # pull_request run triggered by Dependabot does not see. The workflow takes care that the pull
 # request's code only ever runs in a job without a secret.
 #
-# Replace <sha> with a commit of lukislp/lktec-bot (a release tag's commit once there is one)
-# and the date with the day you pinned it. Like every other reference it stays pinned by SHA.
+# Replace <sha> with the commit of a release tag of lukislp/lktec-bot (or of your fork, then also set the
+# bot-repository input) and vX.Y.Z with that tag. Like every other reference it stays pinned by SHA.
 # Set only the tools the repository uses: dotnet-version for NuGet packages.lock.json files,
 # uv-version (matching the CI pin) for uv.lock.
 on:
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   lockfiles:
-    uses: lukislp/lktec-bot/.github/workflows/lockfiles.yml@<sha> # 2026-11-05
+    uses: lukislp/lktec-bot/.github/workflows/lockfiles.yml@<sha> # vX.Y.Z
     with:
       dotnet-version: "10.0.x"
       # uv-version: "0.12.24"

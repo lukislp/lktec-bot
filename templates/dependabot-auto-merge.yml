@@ -5,8 +5,8 @@ name: Dependabot auto-merge
 # .github/workflows/dependabot-auto-merge.yml and read docs/modules/automerge.md of lktec-bot
 # for the bootstrap (install the App, two secrets, the policy file) before it first runs.
 #
-# Replace <sha> with a commit of lukislp/lktec-bot (a release tag's commit once there is one)
-# and the date with the day you pinned it. Like every other reference it stays pinned by SHA.
+# Replace <sha> with the commit of a release tag of lukislp/lktec-bot (or of your fork, then also set the
+# bot-repository input) and vX.Y.Z with that tag. Like every other reference it stays pinned by SHA.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, auto_merge_enabled]
@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   automerge:
-    uses: lukislp/lktec-bot/.github/workflows/automerge.yml@<sha> # 2026-11-05
+    uses: lukislp/lktec-bot/.github/workflows/automerge.yml@<sha> # vX.Y.Z
     secrets:
       app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
       private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}

@@ -4,7 +4,8 @@
 # .github/lktec-bot.yml on the default branch, the App must be installed on the repository and
 # be a bypass actor of the branch ruleset.
 #
-# Replace <sha> with a commit of lukislp/lktec-bot and the date with the day you pinned it. The
+# Replace <sha> with the commit of a release tag of lukislp/lktec-bot (or of your fork, then also set the
+# bot-repository input) and vX.Y.Z with that tag. Replace <owner> and <image> with your own. The
 # images input is an extended regular expression of image repositories without the tag.
 # Put the job next to the release job and list that job (and any image build) in needs.
 jobs:
@@ -14,10 +15,10 @@ jobs:
     permissions:
       contents: read
       actions: read # the reusable workflow reads which commit of itself the run uses
-    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # 2026-11-06
+    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # vX.Y.Z
     with:
       version: ${{ needs.release.outputs.version }}
-      images: ghcr\.io/lukislp/(studylife-ai)
+      images: ghcr\.io/<owner>/(<image>)
       # paths: k8s deploy
       # exclude: /flux/
       # branch: main

@@ -157,7 +157,7 @@ Reference: the `release.yml` of `ci-workflows`, its `semantic-release` action an
 | deploy key, to push past the tag ruleset                      | none: the ruleset forbids deleting and moving tags, not creating them; the App creates the tag through the API |
 | the retry when the branch moved ("behind the remote")         | not needed, see below                                                |
 
-A `.releaserc.json` such as the one of `mowdeck` becomes
+A typical `.releaserc.json` becomes
 
 ```yaml
 modules:
@@ -198,7 +198,7 @@ scan it, deploy it, and release at the end (a `get-version` job, the build jobs,
 ```yaml
 jobs:
   version:
-    uses: lukislp/lktec-bot/.github/workflows/release.yml@<sha> # YYYY-MM-DD
+    uses: lukislp/lktec-bot/.github/workflows/release.yml@<sha> # vX.Y.Z
     with:
       dry-run: true
     secrets:
@@ -213,7 +213,7 @@ jobs:
   release:
     needs: [version, build]
     if: needs.version.outputs.released == 'true'
-    uses: lukislp/lktec-bot/.github/workflows/release.yml@<sha> # YYYY-MM-DD
+    uses: lukislp/lktec-bot/.github/workflows/release.yml@<sha> # vX.Y.Z
     secrets:
       app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
       private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}
@@ -274,8 +274,6 @@ gate.
    delete `.releaserc.json`.
 7. **Keep the tag ruleset as it is.** It forbids deleting and moving tags, which is what the
    bot relies on; it does not forbid creating them.
-
-The first pilot is `lukislp/mowdeck-hacs`.
 
 ## Dogfooding
 
