@@ -535,16 +535,25 @@ def sync_commit(
             help="The branch the files were prepared for; must equal the policy's branch.",
         ),
     ] = None,
+    base_sha: Annotated[
+        str | None,
+        typer.Option(
+            "--base-sha",
+            help="The commit of the branch the files were prepared from (40 hex). If the branch "
+            "moved on and changed one of the files meanwhile, the run is skipped.",
+        ),
+    ] = None,
 ) -> None:
     """Commit handed-over files that differ from the head of the policy's branch.
 
     Only files under the policy's paths; the commit is made by the commit verb and signed by
-    GitHub. Exit 0 also when there is nothing to commit, 3 when the policy denies (also for a
-    path outside its paths or another branch), 1 on an error (or a refused handover).
+    GitHub. Exit 0 also when there is nothing to commit or the run is skipped (see --base-sha),
+    3 when the policy denies (also for a path outside its paths or another branch), 1 on an error
+    (or a refused handover).
     """
     owner, repo, gate = _open_gate(repository)
     with closing(gate):
-        outcome = Sync(gate, owner, repo).commit(changed_dir, version, branch)
+        outcome = Sync(gate, owner, repo).commit(changed_dir, version, branch, base_sha)
     write_summary(outcome.to_markdown(f"{owner}/{repo}"))
     write_outputs(
         {

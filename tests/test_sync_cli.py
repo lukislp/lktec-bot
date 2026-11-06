@@ -134,3 +134,19 @@ def test_sync_commit_usage_errors(state: FakeRepository, tmp_path: Path) -> None
 
     assert bad_repository.exit_code == 2
     assert missing_dir.exit_code == 2
+
+
+def test_sync_commit_skips_when_the_branch_changed_the_file_since_base(
+    state: FakeRepository, tmp_path: Path
+) -> None:
+    base = "b" * 40
+    state.ref_files[(base, "k8s/web.yaml")] = "older\n"
+    handed = handover(tmp_path / "handover", {"k8s/web.yaml": b"new\n"})
+
+    result = run_commit(handed, "--base-sha", base)
+
+    assert result.exit_code == 0, result.output
+    assert "skipped: the branch moved on" in result.stdout
+    assert outputs(tmp_path)["decision"] == "skipped"
+    assert outputs(tmp_path)["result"] == "ok"
+    assert state.commits == []

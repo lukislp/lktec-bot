@@ -347,3 +347,73 @@ def test_the_markdown_summary_escapes_the_reason() -> None:
     assert text.startswith("**COMMITTED** `sync commit` on `acme/widgets`: a\\_b")
     assert "<https://x.test/c>" in text
     assert "Warning: careful \\*now\\*" in text
+
+
+# -- base sha ---------------------------------------------------------------------------------
+
+BASE = "b" * 40
+
+
+def moved_setup(*, base_text: str | None, head_text: str | None) -> Setup:
+    setup = Setup()
+    setup.state.ref_files.clear()
+    for ref, text in ((BASE, base_text), (HEAD, head_text)):
+        if text is not None:
+            setup.state.ref_files[(ref, "k8s/web.yaml")] = text
+    return setup
+
+
+def test_a_base_sha_equal_to_the_head_changes_nothing(tmp_path: Path) -> None:
+    setup = Setup()
+    changed = handover(tmp_path, {"k8s/web.yaml": b"new\n"})
+
+    outcome = setup.sync.commit(changed, "1", None, HEAD)
+
+    assert outcome.decision is Decision.COMMITTED
+
+
+def test_a_moved_branch_that_left_the_files_alone_is_committed_on_the_head(tmp_path: Path) -> None:
+    setup = moved_setup(base_text="same\n", head_text="same\n")
+    changed = handover(tmp_path, {"k8s/web.yaml": b"new\n"})
+
+    outcome = setup.sync.commit(changed, "1", None, BASE.upper())
+
+    assert outcome.decision is Decision.COMMITTED
+    assert setup.state.commits[0][3] == HEAD
+
+
+def test_a_file_absent_at_base_and_head_counts_as_equal(tmp_path: Path) -> None:
+    setup = moved_setup(base_text=None, head_text=None)
+    changed = handover(tmp_path, {"k8s/web.yaml": b"new\n"})
+
+    assert setup.sync.commit(changed, "1", None, BASE).decision is Decision.COMMITTED
+
+
+@pytest.mark.parametrize(("base_text", "head_text"), [("a\n", "b\n"), (None, "b\n"), ("a\n", None)])
+def test_a_moved_branch_that_changed_a_file_skips(
+    tmp_path: Path, base_text: str | None, head_text: str | None
+) -> None:
+    setup = moved_setup(base_text=base_text, head_text=head_text)
+    changed = handover(tmp_path, {"k8s/web.yaml": b"new\n"})
+
+    outcome = setup.sync.commit(changed, "1", None, BASE)
+
+    assert outcome.decision is Decision.SKIPPED
+    assert outcome.exit_code == 0
+    assert outcome.result == "ok"
+    assert "bbbbbbbbbbbb to 0123456789ab and changed k8s/web.yaml" in outcome.reason
+    assert "the next run starts over" in outcome.reason
+    assert setup.state.commits == []
+    assert len(setup.tokens.minted) == 2  # no write token
+
+
+@pytest.mark.parametrize("sha", ["abc", "g" * 40, "b" * 39, "b" * 64])
+def test_an_invalid_base_sha_is_an_error_before_any_token(tmp_path: Path, sha: str) -> None:
+    setup = Setup()
+    changed = handover(tmp_path, {"k8s/web.yaml": b"new\n"})
+
+    outcome = setup.sync.commit(changed, "1", None, sha)
+
+    assert outcome.decision is Decision.ERROR
+    assert "is not a full commit id" in outcome.reason
+    assert setup.tokens.minted == []

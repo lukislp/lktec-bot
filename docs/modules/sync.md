@@ -30,7 +30,7 @@ artifact and runs
 
 ```sh
 lktec-bot sync commit --repository owner/name --changed-dir <handover> \
-  [--version V] [--branch B]
+  [--version V] [--branch B] [--base-sha SHA]
 ```
 
 The handover directory is `manifest.txt` (one repository path per line) plus
@@ -44,8 +44,13 @@ The handover directory is `manifest.txt` (one repository path per line) plus
    the policy's `branch`, and every path of the handover must lie under one of `paths` (a
    directory covers everything below it, a file matches exactly). Otherwise `denied` (exit 3),
    with the offending paths listed, and nothing is committed.
-3. Resolves the head of the branch (`GET /git/ref/heads/<branch>`) and reads every file at that
-   head, comparing it byte for byte. Equal files are dropped; a file missing at the head is an
+3. Resolves the head of the branch (`GET /git/ref/heads/<branch>`). With `--base-sha` (the
+   commit of the branch the files were prepared from, 40 hex) and a head that differs from
+   it, reads every handed-over path at the base and at the head: if all are byte-equal (or
+   absent at both), it goes on as below on top of the head; if any differs, the decision is
+   `skipped` (result `ok`, exit 0) naming the files and both shas, because the files were
+   prepared from stale content and the next run starts over. Then it reads every file at
+   the head, comparing it byte for byte. Equal files are dropped; a file missing at the head is an
    addition.
 4. Nothing differs: `unchanged`, exit 0.
 5. Otherwise runs the `commit` verb (`contents: write`) onto the branch with `expectedHeadOid`
@@ -53,8 +58,8 @@ The handover directory is `manifest.txt` (one repository path per line) plus
    the bot overwriting it. The headline is `commit-message` with `{version}` replaced; the body
    lists the files. Decision `committed` with the commit URL.
 
-It writes `result` (`ok`, `denied`, `error`), `decision` (`committed`, `unchanged`, `denied`,
-`error`), `reason` and `url` to `$GITHUB_OUTPUT`, and a line to the job summary. `--version`
+It writes `result` (`ok`, `denied`, `error`), `decision` (`committed`, `unchanged`, `skipped`,
+`denied`, `error`), `reason` and `url` to `$GITHUB_OUTPUT`, and a line to the job summary. `--version`
 may only hold letters, digits and `. _ + -`.
 
 ### `deploy-bump.yml`
@@ -68,7 +73,8 @@ leave alone, default `/flux/`), `branch` (default `main`), `bot-repository`. Sec
 - `bump` checks out the branch, and for every tracked `*.yaml` / `*.yml` under `paths` that
   mentions one of the images and does not match `exclude` runs
   `sed -i -E "s#(${IMAGES}):[0-9A-Za-z._-]+#\1:${VERSION}#g"`, the loop the 13 repositories
-  have today. The changed files go into the handover (artifact `deploy-bump-handover`).
+  have today. The changed files go into the handover (artifact `deploy-bump-handover`),
+  and the checked-out commit is passed on as `--base-sha`.
 - `commit` runs only when something changed. Its concurrency group is
   `sync-commit-<repository>-<branch>`; a second run waits for the first.
 
@@ -76,7 +82,10 @@ leave alone, default `/flux/`), `branch` (default `main`), `bot-repository`. Sec
 
 For callers that generate the files themselves. Inputs: `artifact` (required: the name of an
 artifact that holds the handover directory), `branch` (default `main`), `version` (optional),
-`bot-repository`; the same secrets and outputs. One job: the `commit` job above, with
+`base-sha` (optional: the commit the caller checked out when it prepared the files, so
+`git rev-parse HEAD` of its checkout; the run is skipped when the branch changed one of
+the files since), `bot-repository`; the same secrets and outputs. The `decision` output
+of both workflows can be `skipped`. One job: the `commit` job above, with
 `actions/download-artifact` of `inputs.artifact`.
 
 The caller's generating job uploads the handover with the directory as the artifact root:

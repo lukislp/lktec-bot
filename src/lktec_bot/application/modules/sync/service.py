@@ -27,6 +27,7 @@ from lktec_bot.text import escape_markdown
 MODULE = "sync"
 READ_PERMISSIONS = {"contents": "read"}
 _VERSION = re.compile(r"^[0-9A-Za-z._+-]*$")
+_BASE_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 class Decision(StrEnum):
@@ -34,6 +35,7 @@ class Decision(StrEnum):
 
     COMMITTED = "committed"
     UNCHANGED = "unchanged"
+    SKIPPED = "skipped"
     DENIED = "denied"
     ERROR = "error"
 
@@ -70,6 +72,7 @@ class _Assessment:
     # Why the policy forbids this run (``denied``) or why it cannot proceed (``error``).
     denied: str | None = None
     error: str | None = None
+    skipped: str | None = None
     head: str = ""
     # Handed-over file -> its text at the branch head (``None``: not there yet).
     heads: dict[str, str | None] = field(default_factory=dict)
@@ -84,9 +87,24 @@ class Sync:
         self._repo = repo
 
     def commit(
-        self, changed_dir: Path, version: str = "", branch: str | None = None
+        self,
+        changed_dir: Path,
+        version: str = "",
+        branch: str | None = None,
+        base_sha: str | None = None,
     ) -> SyncOutcome:
-        """Commit the files in ``changed_dir`` that differ from the branch head."""
+        """Commit the files in ``changed_dir`` that differ from the branch head.
+
+        ``base_sha`` is the commit of the branch the files were prepared from. When the branch
+        has moved on and changed one of the handed-over files since, the run is skipped: the
+        files were prepared from stale content, and the next run starts over.
+        """
+        if base_sha is not None:
+            base_sha = base_sha.lower()
+            if not _BASE_SHA.match(base_sha):
+                return SyncOutcome(
+                    Decision.ERROR, f"--base-sha {base_sha!r} is not a full commit id"
+                )
         if not _VERSION.match(version):
             return SyncOutcome(
                 Decision.ERROR, "the version may only hold letters, digits and . _ + -"
@@ -102,7 +120,7 @@ class Sync:
             self._repo,
             MODULE,
             READ_PERMISSIONS,
-            lambda api, policy: self._assess(api, policy, manifest, branch),
+            lambda api, policy: self._assess(api, policy, manifest, branch, base_sha),
         )
         warnings = read.warnings
         if read.failure is not None or read.value is None:
@@ -111,6 +129,8 @@ class Sync:
         assessment = read.value
         if assessment.denied is not None:
             return SyncOutcome(Decision.DENIED, assessment.denied, warnings=warnings)
+        if assessment.skipped is not None:
+            return SyncOutcome(Decision.SKIPPED, assessment.skipped, warnings=warnings)
         if assessment.error is not None or assessment.options is None:
             return SyncOutcome(Decision.ERROR, assessment.error or "no options", warnings=warnings)
 
@@ -131,7 +151,12 @@ class Sync:
         return self._commit(assessment, changed, local, version, warnings)
 
     def _assess(
-        self, api: GitHubApi, policy: Policy, manifest: list[str], branch: str | None
+        self,
+        api: GitHubApi,
+        policy: Policy,
+        manifest: list[str],
+        branch: str | None,
+        base_sha: str | None,
     ) -> _Assessment:
         options = SyncOptions.model_validate(policy.modules[MODULE].options)
         if branch is not None and branch != options.branch:
@@ -147,6 +172,22 @@ class Sync:
         head = api.get_branch_head(self._owner, self._repo, options.branch)
         if head is None:
             return _Assessment(options, error=f"branch {options.branch!r} does not exist")
+        if base_sha is not None and base_sha != head:
+            moved = [
+                path
+                for path in manifest
+                if api.get_file_content(self._owner, self._repo, path, ref=base_sha)
+                != api.get_file_content(self._owner, self._repo, path, ref=head)
+            ]
+            if moved:
+                return _Assessment(
+                    options,
+                    skipped=(
+                        f"the branch moved on from {base_sha[:12]} to {head[:12]} and changed "
+                        f"{', '.join(moved)} since the files were prepared; "
+                        "the next run starts over"
+                    ),
+                )
         heads = {
             path: api.get_file_content(self._owner, self._repo, path, ref=head) for path in manifest
         }

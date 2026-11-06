@@ -29,6 +29,12 @@ on:
         description: Replaces {version} in the commit message of the policy (optional).
         type: string
         default: ""
+      base-sha:
+        description: >-
+          The commit of the branch the caller checked out when it prepared the files (optional).
+          When the branch moved on and changed one of the files since, the run is skipped.
+        type: string
+        default: ""
       bot-repository:
         description: The repository this reusable workflow lives in. Change only in a fork.
         type: string
@@ -42,7 +48,9 @@ on:
         required: true
     outputs:
       decision:
-        description: committed, unchanged, denied or error.
+        description: >-
+          committed, unchanged, skipped (the branch moved on and changed a file since
+          base-sha; the next run starts over), denied or error.
         value: ${{ jobs.commit.outputs.decision }}
       url:
         description: The commit URL, when a commit was made.
@@ -124,10 +132,16 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
           BRANCH: ${{ inputs.branch }}
+          BASE: ${{ inputs.base-sha }}
           HANDOVER: ${{ runner.temp }}/handover
         run: |
-          lktec-bot sync commit \
-            --repository "$REPOSITORY" \
-            --changed-dir "$HANDOVER" \
-            --version "$VERSION" \
+          args=(
+            --repository "$REPOSITORY"
+            --changed-dir "$HANDOVER"
+            --version "$VERSION"
             --branch "$BRANCH"
+          )
+          if [ -n "$BASE" ]; then
+            args+=(--base-sha "$BASE")
+          fi
+          lktec-bot sync commit "${args[@]}"

@@ -50,7 +50,9 @@ on:
         required: true
     outputs:
       decision:
-        description: committed, unchanged, denied or error.
+        description: >-
+          committed, unchanged, skipped (the branch moved on and changed a manifest since the
+          checkout; the next run starts over), denied or error.
         value: ${{ jobs.commit.outputs.decision || 'unchanged' }}
       url:
         description: The commit URL, when a commit was made.
@@ -69,6 +71,7 @@ jobs:
       contents: read
     outputs:
       changed: ${{ steps.collect.outputs.changed }}
+      base: ${{ steps.checkout.outputs.base }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -85,6 +88,11 @@ jobs:
         with:
           ref: ${{ inputs.branch }}
           persist-credentials: false
+      # The commit the manifests are rewritten from; the commit job skips the run when the
+      # branch changed one of them since.
+      - id: checkout
+        name: Record the checked-out commit
+        run: echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - id: collect
         name: Set the image tags and collect the changed manifests
         env:
@@ -223,10 +231,12 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
           BRANCH: ${{ inputs.branch }}
+          BASE: ${{ needs.bump.outputs.base }}
           HANDOVER: ${{ runner.temp }}/handover
         run: |
           lktec-bot sync commit \
             --repository "$REPOSITORY" \
             --changed-dir "$HANDOVER" \
             --version "$VERSION" \
-            --branch "$BRANCH"
+            --branch "$BRANCH" \
+            --base-sha "$BASE"
