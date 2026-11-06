@@ -26,6 +26,19 @@ modules:
     # One line; {number} is the pull request number.
     commit-message: "chore(deps): refresh lockfiles after Dependabot bump"
 
+  # Commits generated files onto a branch through the App, e.g. the image tag bump after a
+  # release (see docs/modules/sync.md). Needs the App as a bypass actor of the branch ruleset.
+  # Set enabled: true once the deploy-bump or sync workflow is in place.
+  sync:
+    enabled: false
+    # Required. Only files under these directories (or exactly these files) can be committed.
+    # Never .github/workflows/.
+    paths: [k8s, deploy]
+    # The branch the commit goes onto.
+    branch: main
+    # One line; {version} is the release version handed to the workflow.
+    commit-message: "chore(deploy): image {version} [skip ci]"
+
   # Tags and publishes a release from the Conventional Commits on the default branch (see
   # docs/modules/release.md). Set enabled: true once the release workflow is in place.
   release:

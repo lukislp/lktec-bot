@@ -27,6 +27,8 @@ src/lktec_bot/
       automerge/     the automerge module: options.py, classify.py (pure), service.py (arm, sweep)
       lockfiles/     the lockfiles module: options.py, ecosystems.py (pure), service.py (commit)
       release/       the release module: options.py, commits.py, notes.py (pure), service.py (run)
+      sync/          the sync module: options.py (pure), service.py (commit)
+      _handover.py   the handover directory (manifest.txt + files/) shared by lockfiles and sync
     verbs/           one file per verb: @register(Verb.X, grants=..., options=...) on the handler
       _common.py     --number parsing and the draft/closed refusal shared by the PR verbs
   cli.py         typer entry point; verb subcommands are built from the verb registry, module
@@ -134,6 +136,7 @@ repository enables a module; the registry bounds what an enabled module may do:
 | `automerge` | `approve`, `enable-automerge`, `update-branch`, `comment` | `majors: manual \| auto`, `exclude: [str]`, `workflow-files: auto \| manual`, `method: squash \| merge \| rebase` (see [modules/automerge.md](modules/automerge.md)) |
 | `lockfiles` | `commit`, `comment`                                | `ecosystems: [uv \| dotnet]`, `paths: [str]`, `commit-message: str` (see [modules/lockfiles.md](modules/lockfiles.md)) |
 | `release`   | `release`                                          | `mode: tag`, `tag-format: str`, `branch: str`, `first-version: str`, `rules: [{type, scope, breaking, release}]`, `sections: {type: heading}` (see [modules/release.md](modules/release.md)) |
+| `sync`      | `commit`                                         | `paths: [str]` (required), `branch: str`, `commit-message: str` (see [modules/sync.md](modules/sync.md)) |
 | `ping`      | `ping`                                             | none                                         |
 
 An enabled module cannot run a verb outside its set, no matter what the policy file says.
@@ -152,7 +155,7 @@ whose service (the part that drives the gate) only the command line imports.
 A module that decides *what* to do needs to read before it writes (which pull requests exist,
 what they change). It does that through `Gate.read(owner, repo, module, permissions, reader)`:
 the module must be known and enabled in the policy, the reader gets a client bound to a token
-narrowed to exactly `permissions` (`pull_requests: read` for `automerge`, plus `contents: read` for `lockfiles`, `contents: read` for `release`; scope-checked and
+narrowed to exactly `permissions` (`pull_requests: read` for `automerge`, plus `contents: read` for `lockfiles`, `contents: read` for `release` and `sync`; scope-checked and
 revoked like a verb token) plus the validated policy to read its own options, and nothing it
 does may write. Every write is a verb and goes through `Gate.run`, each with its own narrowed
 token, so a module command never holds more than one permission at a time and the permission
@@ -212,7 +215,7 @@ footprint to change.
 `commit` is the GraphQL mutation `createCommitOnBranch`. GitHub creates the commit itself, so it is
 signed by GitHub with no signing key and no personal access token, and needs `contents:write`
 only. The adapter base64-encodes the added files; the path rules live in `domain/paths.py` and
-are shared with the `lockfiles` module, which checks everything a job that ran a pull request's
+are shared with the `lockfiles` and `sync` modules, which check everything a job that ran a pull request's
 code hands over against them. The mutation is a POST and is never retried after a 5xx: the first
 attempt may have created the commit.
 
@@ -290,7 +293,7 @@ the httpx adapter together, with a respx test.
   fails on it is safe to re-run after the reset: sweeps are idempotent and a release run
   re-reads everything. The adapter keeps the last `X-RateLimit-Remaining` it saw
   (`last_rate_limit`); the gate hands it to the CLI, which appends `rate limit remaining: N`
-  to the final line of `automerge arm`, `automerge sweep`, `lockfiles commit` and
+  to the final line of `automerge arm`, `automerge sweep`, `lockfiles commit`, `sync commit` and
   `release run`.- Transport errors (connection dropped, timeout): wrapped into `GitHubHttpError`; retried once
   for idempotent methods.
 - A `Retry-After` above the back-off limit (30 s by default) fails the call instead of being

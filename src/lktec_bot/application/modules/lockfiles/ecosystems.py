@@ -8,6 +8,8 @@ commands that regenerate each lock file live in the reusable workflow
 
 from __future__ import annotations
 
+from lktec_bot.domain.paths import within as within  # re-exported: the containment rule
+
 # Ecosystem name (as used in the ``ecosystems`` option) -> the lock file's name.
 LOCKFILE_NAMES: dict[str, str] = {
     "uv": "uv.lock",
@@ -22,8 +24,3 @@ def ecosystem_of(path: str) -> str | None:
         if name == lockfile:
             return ecosystem
     return None
-
-
-def within(path: str, restriction: str) -> bool:
-    """Whether ``path`` is ``restriction`` or lies under it (a directory prefix)."""
-    return path == restriction or path.startswith(f"{restriction}/")

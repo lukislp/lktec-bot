@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from lktec_bot.application.gate import Gate
+from lktec_bot.application.modules import _handover
 from lktec_bot.application.modules.lockfiles import service
 from lktec_bot.application.modules.lockfiles.ecosystems import ecosystem_of, within
 from lktec_bot.application.modules.lockfiles.options import (
@@ -195,7 +196,7 @@ def test_local_file_refuses_a_file_over_the_size_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handover(tmp_path, {"uv.lock": b"12345678"})
-    monkeypatch.setattr(service, "MAX_FILE_BYTES", 4)
+    monkeypatch.setattr(_handover, "MAX_FILE_BYTES", 4)
 
     with pytest.raises(HandoverError, match="larger than"):
         service.local_file(tmp_path, "uv.lock")

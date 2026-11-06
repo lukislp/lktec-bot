@@ -1,0 +1,26 @@
+# Job snippet for the release workflow of a repository that deploys with Kubernetes manifests
+# (k8s/ or deploy/). It replaces the deploy-bump job that pushed over an SSH deploy key. Read
+# docs/modules/sync.md of lktec-bot first: the sync module must be enabled in
+# .github/lktec-bot.yml on the default branch, the App must be installed on the repository and
+# be a bypass actor of the branch ruleset.
+#
+# Replace <sha> with a commit of lukislp/lktec-bot and the date with the day you pinned it. The
+# images input is an extended regular expression of image repositories without the tag.
+# Put the job next to the release job and list that job (and any image build) in needs.
+jobs:
+  deploy-bump:
+    needs: [release]
+    if: needs.release.outputs.released == 'true'
+    permissions:
+      contents: read
+      actions: read # the reusable workflow reads which commit of itself the run uses
+    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # 2026-11-06
+    with:
+      version: ${{ needs.release.outputs.version }}
+      images: ghcr\.io/lukislp/(studylife-ai)
+      # paths: k8s deploy
+      # exclude: /flux/
+      # branch: main
+    secrets:
+      app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
+      private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}

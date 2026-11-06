@@ -17,6 +17,11 @@ _DRIVE = re.compile(r"^[A-Za-z]:")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
+def within(path: str, restriction: str) -> bool:
+    """Whether ``path`` is ``restriction`` or lies under it (a directory prefix)."""
+    return path == restriction or path.startswith(f"{restriction}/")
+
+
 def repo_path_problem(path: str) -> str | None:
     """Why ``path`` is not an acceptable repository path, or ``None`` when it is.
 

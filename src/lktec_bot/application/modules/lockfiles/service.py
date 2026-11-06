@@ -11,16 +11,17 @@ The commit itself is the ``commit`` verb, signed by GitHub.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
 from lktec_bot.application.gate import Gate, VerbOutcome, VerbRequest, VerbResult
+from lktec_bot.application.modules._handover import HandoverError as HandoverError
+from lktec_bot.application.modules._handover import local_file as local_file
+from lktec_bot.application.modules._handover import read_manifest as read_handover_manifest
 from lktec_bot.application.modules.automerge.classify import DEPENDABOT_LOGIN
 from lktec_bot.application.modules.lockfiles.ecosystems import ecosystem_of, within
 from lktec_bot.application.modules.lockfiles.options import LockfilesOptions
-from lktec_bot.domain.paths import repo_path_problem
 from lktec_bot.domain.permissions import Target, Verb
 from lktec_bot.domain.policy import Policy
 from lktec_bot.ports.github_api import GitHubApi, PullRequest
@@ -28,12 +29,7 @@ from lktec_bot.text import escape_markdown
 
 MODULE = "lockfiles"
 READ_PERMISSIONS = {"contents": "read", "pull_requests": "read"}
-MANIFEST = "manifest.txt"
-FILES_DIR = "files"
 COMMENT_MARKER = "lockfiles"
-MAX_FILE_BYTES = 10 * 1024 * 1024
-# Lock file paths end up in a commit message and a comment, and in ``--add path=file``.
-_SAFE_PATH = re.compile(r"^[A-Za-z0-9._/@+ -]+$")
 
 
 class Decision(StrEnum):
@@ -73,10 +69,6 @@ class CommitOutcome:
         return text + "\n"
 
 
-class HandoverError(ValueError):
-    """What the regenerating job handed over cannot be trusted or read."""
-
-
 @dataclass(frozen=True, slots=True)
 class _Assessment:
     options: LockfilesOptions
@@ -93,46 +85,10 @@ def read_manifest(changed_dir: Path) -> list[str]:
     Every one must be a plain relative path whose file name is a known lock file name; if any
     is not, the whole handover is refused (nothing is committed).
     """
-    try:
-        text = (changed_dir / MANIFEST).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise HandoverError(f"cannot read {MANIFEST} in {changed_dir}: {exc}") from None
-    paths: list[str] = []
-    problems: list[str] = []
-    for raw in text.splitlines():
-        path = raw.strip()
-        if not path or path in paths:
-            continue
-        problem = repo_path_problem(path)
-        if problem is None and not _SAFE_PATH.match(path):
-            problem = "the path has characters outside letters, digits and . _ / @ + - space"
-        if problem is None and ecosystem_of(path) is None:
-            problem = "not the name of a known lock file"
-        if problem is not None:
-            problems.append(f"{path!r}: {problem}")
-        paths.append(path)
-    if problems:
-        raise HandoverError("refusing the handover: " + "; ".join(problems))
-    return paths
-
-
-def local_file(changed_dir: Path, path: str) -> Path:
-    """The handed-over copy of ``path``: a regular file inside ``<changed_dir>/files``."""
-    root = (changed_dir / FILES_DIR).resolve()
-    candidate = changed_dir / FILES_DIR / path
-    try:
-        resolved = candidate.resolve(strict=True)
-    except OSError:
-        raise HandoverError(
-            f"{MANIFEST} lists {path!r} but {FILES_DIR}/{path} is missing"
-        ) from None
-    if candidate.is_symlink() or not resolved.is_relative_to(root) or not resolved.is_file():
-        raise HandoverError(f"{FILES_DIR}/{path} is not a plain file inside {FILES_DIR}/")
-    if resolved.stat().st_size > MAX_FILE_BYTES:
-        raise HandoverError(
-            f"{FILES_DIR}/{path} is larger than {MAX_FILE_BYTES // (1024 * 1024)} MiB"
-        )
-    return resolved
+    return read_handover_manifest(
+        changed_dir,
+        lambda path: None if ecosystem_of(path) else "not the name of a known lock file",
+    )
 
 
 class Lockfiles:

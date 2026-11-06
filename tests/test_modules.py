@@ -23,7 +23,7 @@ PING = "version: 1\nmodules:\n  ping:\n    enabled: true\n"
 
 
 def test_registry_declares_the_shipped_modules() -> None:
-    assert set(MODULES) == {"automerge", "lockfiles", "ping", "release"}
+    assert set(MODULES) == {"automerge", "lockfiles", "ping", "release", "sync"}
     assert MODULES["release"].verbs == {Verb.RELEASE}
     assert MODULES["release"].options is ReleaseOptions
     assert MODULES["lockfiles"].verbs == {Verb.COMMIT, Verb.COMMENT}
@@ -88,7 +88,7 @@ def test_validate_policy_rejects_an_unknown_module() -> None:
         validate_policy(PING + "  mystery:\n    enabled: true\n")
 
     assert excinfo.value.reasons == [
-        "modules.mystery: unknown module (known: automerge, lockfiles, ping, release)"
+        "modules.mystery: unknown module (known: automerge, lockfiles, ping, release, sync)"
     ]
 
 
@@ -123,7 +123,7 @@ def test_authorize_denies_an_unknown_module_with_or_without_a_policy() -> None:
         assert decision.allowed is False
         assert (
             decision.reason
-            == "module 'mystery' is not known (known: automerge, lockfiles, ping, release)"
+            == "module 'mystery' is not known (known: automerge, lockfiles, ping, release, sync)"
         )
         assert decision.module == "mystery"
         assert decision.verb == "ping"

@@ -1,0 +1,133 @@
+name: Sync (reusable)
+
+# Commits files that a job of the caller generated onto a branch as the GitHub App, for callers
+# that produce the files themselves (for example a status page that writes data/ every few
+# minutes). The caller's generating job uploads an artifact that holds a handover directory;
+# this workflow downloads it and runs `lktec-bot sync commit` (see docs/modules/sync.md).
+#
+# The handover layout the caller must upload (the artifact's root is the handover directory):
+#
+#   manifest.txt        one repository path per line, for example `data/status.json`
+#   files/<path>        the new content of every listed path, for example `files/data/status.json`
+#
+# Use actions/upload-artifact with `path:` set to the directory and include-hidden-files: true
+# when a path starts with a dot. The generating job needs no secret and the files are treated
+# as untrusted: only plain relative paths inside the `paths` of the policy are committed, and
+# only the ones that differ from the head of the branch.
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: Name of the artifact that holds the handover directory.
+        type: string
+        required: true
+      branch:
+        description: The branch to commit onto. Must equal the branch in the policy.
+        type: string
+        default: main
+      version:
+        description: Replaces {version} in the commit message of the policy (optional).
+        type: string
+        default: ""
+      bot-repository:
+        description: The repository this reusable workflow lives in. Change only in a fork.
+        type: string
+        default: lukislp/lktec-bot
+    secrets:
+      app-id:
+        description: The GitHub App id (a secret named LKTEC_BOT_APP_ID in the caller).
+        required: true
+      private-key:
+        description: The App's private key in PEM form (a secret named LKTEC_BOT_PRIVATE_KEY).
+        required: true
+    outputs:
+      decision:
+        description: committed, unchanged, denied or error.
+        value: ${{ jobs.commit.outputs.decision }}
+      url:
+        description: The commit URL, when a commit was made.
+        value: ${{ jobs.commit.outputs.url }}
+
+permissions:
+  contents: read
+  actions: read # to read which commit of this workflow the run uses
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      decision: ${{ steps.commit.outputs.decision }}
+      url: ${{ steps.commit.outputs.url }}
+    # One commit at a time per branch; a second run waits for the first.
+    concurrency:
+      group: sync-commit-${{ github.repository }}-${{ inputs.branch }}
+      cancel-in-progress: false
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          # uv talks to PyPI only; the bot to api.github.com; setup-uv reads its version manifest
+          # from raw.githubusercontent.com and downloads uv from the GitHub release; the
+          # artifact download comes from the results receiver and blob storage.
+          allowed-endpoints: >
+            *.blob.core.windows.net:443
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            results-receiver.actions.githubusercontent.com:443
+      # The bot, at the commit this workflow file was called at. NOT the caller's code: this job
+      # holds the App secrets. A reusable workflow cannot read its own repository or commit
+      # from the github context, but the run lists the workflows it references with their
+      # commit.
+      - name: Find the commit this workflow was called at
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BOT_REPOSITORY: ${{ inputs.bot-repository }}
+        run: |
+          # Only an entry of the bot's own repository counts: a caller that also references the
+          # sync.yml of another repository must not make this job run that code.
+          entry="$(gh api "repos/$RUN" | jq -r --arg repo "$BOT_REPOSITORY" '[.referenced_workflows[]? | select(.path | startswith($repo + "/.github/workflows/sync.yml@"))][0] | "\(.path | split("/.github/")[0]) \(.sha)"')"
+          read -r repository sha <<< "$entry"
+          if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not tell which commit of the sync workflow this run uses: $entry"
+            exit 1
+          fi
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.source.outputs.repository }}
+          ref: ${{ steps.source.outputs.sha }}
+          path: .lktec-bot
+          persist-credentials: false
+      - uses: ./.lktec-bot/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}/handover
+      - id: commit
+        name: Commit the generated files
+        env:
+          LKTEC_BOT_APP_ID: ${{ secrets.app-id }}
+          LKTEC_BOT_PRIVATE_KEY: ${{ secrets.private-key }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          BRANCH: ${{ inputs.branch }}
+          HANDOVER: ${{ runner.temp }}/handover
+        run: |
+          lktec-bot sync commit \
+            --repository "$REPOSITORY" \
+            --changed-dir "$HANDOVER" \
+            --version "$VERSION" \
+            --branch "$BRANCH"

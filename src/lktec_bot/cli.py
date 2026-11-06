@@ -26,6 +26,7 @@ from lktec_bot.application.modules import authorize, validate_policy
 from lktec_bot.application.modules.automerge.service import Automerge, Decision
 from lktec_bot.application.modules.lockfiles.service import Lockfiles
 from lktec_bot.application.modules.release.service import DEFAULT_SERVER, Release
+from lktec_bot.application.modules.sync.service import Sync
 from lktec_bot.application.verbs import Option, VerbSpec, handlers, load_verbs
 from lktec_bot.domain.permissions import Target, Verb
 from lktec_bot.domain.policy import PolicyError
@@ -78,6 +79,10 @@ lockfiles_app = typer.Typer(
     help="The lockfiles module: commit regenerated lock files onto a Dependabot pull request."
 )
 app.add_typer(lockfiles_app, name="lockfiles")
+sync_app = typer.Typer(
+    help="The sync module: commit generated files onto a branch through the App."
+)
+app.add_typer(sync_app, name="sync")
 
 
 class ConfigError(ValueError):
@@ -488,6 +493,58 @@ def lockfiles_commit(
     owner, repo, gate = _open_gate(repository)
     with closing(gate):
         outcome = Lockfiles(gate, owner, repo).commit(number, changed_dir, head_sha)
+    write_summary(outcome.to_markdown(f"{owner}/{repo}"))
+    write_outputs(
+        {
+            "result": outcome.result,
+            "decision": outcome.decision.value,
+            "reason": outcome.reason,
+            "message": outcome.reason,
+            "url": outcome.url,
+        }
+    )
+    say(_with_budget(f"{outcome.decision.value}: {outcome.reason}", gate))
+    if outcome.url:
+        say(f"url: {outcome.url}")
+    for warning in outcome.warnings:
+        say(f"warning: {warning}", err=True)
+    if outcome.exit_code:
+        raise typer.Exit(code=outcome.exit_code)
+
+
+@sync_app.command("commit")
+def sync_commit(
+    changed_dir: Annotated[
+        Path,
+        typer.Option(
+            "--changed-dir",
+            help="Directory with manifest.txt and files/<repo-path> from the generating job.",
+            exists=True,
+            file_okay=False,
+        ),
+    ],
+    repository: Annotated[str, REPOSITORY_OPTION],
+    version: Annotated[
+        str,
+        typer.Option("--version", help="Replaces {version} in the commit message."),
+    ] = "",
+    branch: Annotated[
+        str | None,
+        typer.Option(
+            "--branch",
+            help="The branch the files were prepared for; must equal the policy's branch.",
+        ),
+    ] = None,
+) -> None:
+    """Commit handed-over files that differ from the head of the policy's branch.
+
+    Only files under the policy's paths; the commit is made by the commit verb and signed by
+    GitHub. Exit 0 also when there is nothing to commit, 3 when the policy denies (also for a
+    path outside its paths or another branch), 1 on an error (or a refused handover).
+    """
+    owner, repo, gate = _open_gate(repository)
+    with closing(gate):
+        outcome = Sync(gate, owner, repo).commit(changed_dir, version, branch)
     write_summary(outcome.to_markdown(f"{owner}/{repo}"))
     write_outputs(
         {

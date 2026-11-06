@@ -51,7 +51,7 @@ modules:
 ```
 
 Each module may only run the verbs registered for it (`automerge`: approve, enable-automerge,
-update-branch, comment; `lockfiles`: commit, comment; `release`: release; `ping`: ping), and only the options it declares; anything else makes
+update-branch, comment; `lockfiles`: commit, comment; `release`: release; `sync`: commit; `ping`: ping), and only the options it declares; anything else makes
 the file invalid and denies every verb.
 
 To run a verb against a real repository, register an App ([docs/register-your-app.md](docs/register-your-app.md)),
@@ -80,6 +80,9 @@ so far).
   verb: signed bot commits that replace a personal access token and a signing key.
 - [docs/modules/release.md](docs/modules/release.md): the release module, the `release` verb,
   how semantic-release maps onto it, release chains and how to set up a repository.
+- [docs/modules/sync.md](docs/modules/sync.md): the sync module: generated files committed onto a
+  protected branch through the App (deploy bump, status data), the bypass-actor setup and why it
+  is acceptable.
 - [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Verbs and actions
@@ -132,11 +135,25 @@ with a `dry-run` input and `version` output for release chains) and caller templ
 (`pr`) is planned. The verb `open-pr` (open or update a pull request) and `commit --from` (create
 the branch first) ship with it.
 
+The [`sync` module](docs/modules/sync.md) commits generated files onto a protected branch
+through the App: today the image-tag deploy bump after a release in the Kubernetes repositories
+(`k8s/` or `deploy/`), and the generated `data/` commits of the status page. It replaces the SSH
+deploy key plus `DEPLOY_SIGNING_KEY` push of the `deploy-key-push` and `signed-bot-commit`
+actions of `ci-workflows`: `lktec-bot sync commit` compares the handed-over files with the
+branch head and commits the ones that differ with the `commit` verb. Because the commit lands on
+the protected branch without a pull request, the App must be a bypass actor (actor type
+Integration, mode always) of the branch ruleset. That is acceptable because GitHub signs the
+commit, the token is narrowed to one repository, the verb refuses `.github/workflows/`, and the
+module refuses any file outside the `paths` of the policy. Reusable workflows
+([`.github/workflows/deploy-bump.yml`](.github/workflows/deploy-bump.yml) and
+[`.github/workflows/sync.yml`](.github/workflows/sync.yml)) and caller template
+([`templates/deploy-bump.yml`](templates/deploy-bump.yml)).
+
 ## Status: phase 2, pre-release
 
 Policy schema, permission table, gate, token minting, HTTP adapter, CLI, the phase-1 verbs and
-their composite actions, the `release` and `open-pr` verbs, and the automerge, lockfiles and
-release modules, all tested against fakes and mocked HTTP, plus the live end-to-end workflow.
+their composite actions, the `release` and `open-pr` verbs, and the automerge, lockfiles,
+release and sync modules, all tested against fakes and mocked HTTP, plus the live end-to-end workflow.
 
 Deliberately not in this repository yet:
 

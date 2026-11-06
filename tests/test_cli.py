@@ -106,7 +106,7 @@ def test_policy_validate_reports_every_reason(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert "invalid: modules.automerge.nope: Extra inputs are not permitted" in result.output
     assert (
-        "invalid: modules.x: unknown module (known: automerge, lockfiles, ping, release)"
+        "invalid: modules.x: unknown module (known: automerge, lockfiles, ping, release, sync)"
         in result.output
     )
 
