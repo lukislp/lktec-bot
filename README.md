@@ -165,3 +165,14 @@ Deliberately not in this repository yet:
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE).
+
+## Project
+
+- [SECURITY.md](SECURITY.md): reporting a vulnerability, response targets, verifying a release.
+- [CONTRIBUTING.md](CONTRIBUTING.md): how changes get in, tests, coding style.
+- [GOVERNANCE.md](GOVERNANCE.md): roles, decisions, continuity.
+- [docs/roadmap.md](docs/roadmap.md): phases 0-4 and the next twelve months.
+- [docs/assurance-case.md](docs/assurance-case.md): threat model, trust boundaries, residual risks.
+- [docs/releases.md](docs/releases.md): signed release assets and reproducible builds.
+
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lukislp/lktec-bot/badge)](https://scorecard.dev/viewer/?uri=github.com/lukislp/lktec-bot)
