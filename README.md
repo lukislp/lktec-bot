@@ -147,7 +147,7 @@ commit, the token is narrowed to one repository, the verb refuses `.github/workf
 module refuses any file outside the `paths` of the policy. Reusable workflows
 ([`.github/workflows/deploy-bump.yml`](.github/workflows/deploy-bump.yml) and
 [`.github/workflows/sync.yml`](.github/workflows/sync.yml)) and caller template
-([`templates/deploy-bump.yml`](templates/deploy-bump.yml)).
+([`templates/deploy-bump.yml`](templates/deploy-bump.yml)). The deploy bump can carry extra files, such as a coverage badge, into the same commit (input `handover-artifact`).
 
 ## Status: phase 2, pre-release
 

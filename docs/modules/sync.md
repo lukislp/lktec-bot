@@ -75,9 +75,51 @@ leave alone, default `/flux/`), `branch` (default `main`), `bot-repository`. Sec
   `sed -i -E "s#(${IMAGES}):[0-9A-Za-z._-]+#\1:${VERSION}#g"`, the loop the 13 repositories
   have today. The changed files go into the handover (artifact `deploy-bump-handover`),
   and the checked-out commit is passed on as `--base-sha`.
+  With the input handover-artifact the files of one more artifact are merged in (see below).
 - `commit` runs only when something changed. Its concurrency group is
   `sync-commit-<repository>-<branch>`; a second run waits for the first.
 
+### Carrying extra files in the deploy bump
+
+`deploy-bump.yml` has an optional input `handover-artifact` (default empty): the name of an
+artifact that a job of the caller uploaded earlier in the same run, laid out as a handover
+directory exactly as under `sync.yml` (`manifest.txt` with one repository path per line plus
+`files/<path>`). The `bump` job downloads it, copies every listed file into its own handover
+(a path with characters the bot does not accept, or without a regular file under `files/`, is
+skipped with a warning) and counts the run as changed, so a release that bumps no manifest but
+carries a changed file still commits. The `commit` job is unchanged: it compares every
+handed-over file with the branch head and commits only what differs, in the same commit as the
+tag bump. The policy's `paths` must list the extra files as well, for the badge below
+`.github/badges`.
+
+```yaml
+jobs:
+  test:
+    # ... runs the tests and writes .github/badges/coverage.json
+    steps:
+      - run: |
+          h="$RUNNER_TEMP/coverage-badge-handover"
+          mkdir -p "$h/files/.github/badges"
+          cp .github/badges/coverage.json "$h/files/.github/badges/coverage.json"
+          echo ".github/badges/coverage.json" > "$h/manifest.txt"
+      - uses: actions/upload-artifact@<sha> # vX.Y.Z
+        with:
+          name: coverage-badge-handover
+          path: ${{ runner.temp }}/coverage-badge-handover
+          include-hidden-files: true
+  deploy-bump:
+    needs: [release, test]
+    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # 2026-11-06
+    with:
+      version: ${{ needs.release.outputs.version }}
+      images: ghcr\.io/lukislp/(studylife-ai)
+      handover-artifact: coverage-badge-handover
+    secrets:
+      app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
+      private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}
+```
+
+with `paths: [k8s, .github/badges]` in the `sync` block of the policy.
 ### `sync.yml`
 
 For callers that generate the files themselves. Inputs: `artifact` (required: the name of an

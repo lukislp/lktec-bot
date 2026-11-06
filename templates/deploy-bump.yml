@@ -21,6 +21,7 @@ jobs:
       # paths: k8s deploy
       # exclude: /flux/
       # branch: main
+      # handover-artifact: coverage-badge-handover # extra files for the same commit, see docs/modules/sync.md
     secrets:
       app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
       private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}
