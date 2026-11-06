@@ -22,9 +22,9 @@ from lktec_bot.application.verbs import Option, register
 from lktec_bot.domain.permissions import Grant, Permission, Verb
 from lktec_bot.ports.github_api import GitHubApi
 
-_OID = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+_OID = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 # A tag name git accepts, restricted to what a release tag looks like in practice.
-_TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+@-]{0,199}$")
+_TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+@-]{0,199}\Z")
 
 
 def _fail(message: str, tag: str = "") -> VerbResult:

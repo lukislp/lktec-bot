@@ -26,9 +26,10 @@ from lktec_bot.text import escape_markdown, sanitize
 POLICY_READ_PERMISSIONS: Mapping[str, str] = {"contents": "read"}
 # GitHub adds metadata:read to every installation token whether or not it was requested.
 IMPLICIT_PERMISSIONS: Mapping[str, str] = {"metadata": "read"}
-TOKEN_NOT_REVOKED = "token not revoked"
+TOKEN_NOT_REVOKED = "token not revoked"  # noqa: S105 - a warning prefix, not a credential
 
-_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+# fullmatch, not match with ``$``: ``$`` also accepts a trailing newline.
+_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 _ACCESS_RANK = {"read": 1, "write": 2}
 
 # Called with every minted token value before anything else happens with it (``::add-mask::``).
@@ -41,7 +42,7 @@ def validate_name(kind: str, value: str) -> str:
         raise ValueError(f"{kind} must not be empty")
     if value in (".", ".."):
         raise ValueError(f"{kind} must not be {value!r}")
-    if not _NAME.match(value):
+    if not _NAME.fullmatch(value):
         raise ValueError(f"{kind} {value!r} may only contain letters, digits, '-', '_' and '.'")
     return value
 

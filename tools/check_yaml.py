@@ -45,7 +45,7 @@ def problems_in(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     problems: list[str] = []
     try:
-        document = yaml.load(text, Loader=_StrictLoader)
+        document = yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - a SafeLoader subclass
     except yaml.YAMLError as exc:
         return [f"{path}: {exc}"]
     if not isinstance(document, dict):

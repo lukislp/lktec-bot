@@ -42,7 +42,7 @@ EXIT_DENIED = 3
 
 PROVIDER_VAR = "LKTEC_BOT_TOKEN_PROVIDER"
 API_URL_VAR = "LKTEC_BOT_API_URL"
-CALLER_TOKEN_VAR = "LKTEC_BOT_CALLER_TOKEN"
+CALLER_TOKEN_VAR = "LKTEC_BOT_CALLER_TOKEN"  # noqa: S105 - the name of an env var, not a secret
 PROVIDERS = ("app",)
 
 # ``--target`` values of the verbs whose permission depends on what they act on.

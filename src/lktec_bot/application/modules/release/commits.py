@@ -19,7 +19,7 @@ from lktec_bot.ports.github_api import CommitInfo
 HEADER = re.compile(r"^(\w+)(?:\(([^)]*)\))?(!)?: (.+)$")
 _BREAKING_NOTE = re.compile(r"^BREAKING[ -]CHANGE:[ \t]*(.*)$")
 _MERGE_PREFIXES = ("Merge pull request", "Merge branch", "Merge remote-tracking branch")
-_VERSION = re.compile(rf"^{SEMVER_CORE}$")
+_VERSION = re.compile(rf"^{SEMVER_CORE}\Z")
 
 Version = tuple[int, int, int]
 

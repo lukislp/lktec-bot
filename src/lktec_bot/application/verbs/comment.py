@@ -17,7 +17,7 @@ from lktec_bot.application.verbs._common import NUMBER, number_of
 from lktec_bot.domain.permissions import Grant, Permission, Target, Verb
 from lktec_bot.ports.github_api import GitHubApi
 
-_MARKER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_MARKER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 
 
 def marker_tag(marker: str) -> str:

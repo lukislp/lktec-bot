@@ -12,7 +12,7 @@ from lktec_bot.domain.paths import repo_path_problem
 DEFAULT_BRANCH = "main"
 DEFAULT_COMMIT_MESSAGE = "chore(deploy): image {version} [skip ci]"
 MAX_HEADLINE = 200
-_BRANCH = re.compile(r"^[A-Za-z0-9._/-]+$")
+_BRANCH = re.compile(r"^[A-Za-z0-9._/-]+\Z")
 
 
 class SyncOptions(BaseModel):

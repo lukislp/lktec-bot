@@ -41,7 +41,7 @@ GrantSpec = frozenset[Grant] | Mapping[Target, frozenset[Grant]]
 # ``default`` is true. Its value is always a bool.
 OptionKind = Literal["int", "str", "choice", "text", "multi", "flag"]
 
-_OPTION_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+_OPTION_NAME = re.compile(r"^[a-z][a-z0-9_]*\Z")
 
 
 @dataclass(frozen=True, slots=True)

@@ -18,7 +18,7 @@ MANIFEST = "manifest.txt"
 FILES_DIR = "files"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 # Paths end up in a commit message and in ``--add path=file``.
-_SAFE_PATH = re.compile(r"^[A-Za-z0-9._/@+ -]+$")
+_SAFE_PATH = re.compile(r"^[A-Za-z0-9._/@+ -]+\Z")
 
 
 class HandoverError(ValueError):

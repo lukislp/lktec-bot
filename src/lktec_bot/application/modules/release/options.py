@@ -10,10 +10,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SEMVER_CORE = r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-_SEMVER = re.compile(rf"^{SEMVER_CORE}$")
+_SEMVER = re.compile(rf"^{SEMVER_CORE}\Z")
 # What may stand around ``{version}`` in a tag: the characters of a plain git tag name.
-_TAG_TEXT = re.compile(r"^[A-Za-z0-9._/@-]*$")
-_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+_TAG_TEXT = re.compile(r"^[A-Za-z0-9._/@-]*\Z")
+_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*\Z")
 
 DEFAULT_SECTIONS: dict[str, str] = {
     "feat": "Features",

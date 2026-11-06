@@ -31,7 +31,7 @@ from lktec_bot.domain.paths import repo_path_problem
 from lktec_bot.domain.permissions import Grant, Permission, Verb
 from lktec_bot.ports.github_api import GitHubApi
 
-_OID = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+_OID = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 # GraphQL accepts far less than the REST limits; refuse early with a clear message.
 MAX_TOTAL_BYTES = 30 * 1024 * 1024
 
