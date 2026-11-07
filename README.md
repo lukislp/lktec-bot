@@ -189,6 +189,3 @@ Apache-2.0, see [LICENSE](LICENSE).
 - [docs/roadmap.md](docs/roadmap.md): phases 0-4 and the next twelve months.
 - [docs/assurance-case.md](docs/assurance-case.md): threat model, trust boundaries, residual risks.
 - [docs/releases.md](docs/releases.md): signed release assets and reproducible builds.
-
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lukislp/lktec-bot/badge)](https://scorecard.dev/viewer/?uri=github.com/lukislp/lktec-bot)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16420/badge)](https://www.bestpractices.dev/projects/16420)
