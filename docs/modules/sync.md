@@ -65,7 +65,7 @@ may only hold letters, digits and `. _ + -`.
 ### `deploy-bump.yml`
 
 Inputs: `version` (required), `images` (required, an extended regular expression of image
-repositories without the tag, for example `ghcr\.io/lukislp/(studylife-ai)`), `paths`
+repositories without the tag, for example `ghcr\.io/<owner>/(<image>)`), `paths`
 (space-separated directories, default `k8s deploy`), `exclude` (a `grep -E` pattern of paths to
 leave alone, default `/flux/`), `branch` (default `main`), `bot-repository`. Secrets: `app-id`,
 `private-key`. Outputs: `decision`, `url`.
@@ -109,10 +109,10 @@ jobs:
           include-hidden-files: true
   deploy-bump:
     needs: [release, test]
-    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # 2026-11-06
+    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # vX.Y.Z
     with:
       version: ${{ needs.release.outputs.version }}
-      images: ghcr\.io/lukislp/(studylife-ai)
+      images: ghcr\.io/<owner>/(<image>)
       handover-artifact: coverage-badge-handover
     secrets:
       app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
@@ -209,7 +209,7 @@ push anything anywhere in the repository. The App is narrower in every direction
 ```yaml
 jobs:
   release:
-    uses: lukislp/lktec-bot/.github/workflows/release.yml@<sha> # 2026-11-06
+    uses: lukislp/lktec-bot/.github/workflows/release.yml@<sha> # vX.Y.Z
     # ...
   image:
     needs: [release]
@@ -220,10 +220,10 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # 2026-11-06
+    uses: lukislp/lktec-bot/.github/workflows/deploy-bump.yml@<sha> # vX.Y.Z
     with:
       version: ${{ needs.release.outputs.version }}
-      images: ghcr\.io/lukislp/(studylife-ai)
+      images: ghcr\.io/<owner>/(<image>)
     secrets:
       app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
       private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}

@@ -72,7 +72,8 @@ so far).
 - [docs/architecture.md](docs/architecture.md): layers, the gate's decision order, the module
   registry, the verb/permission table, how a verb is added (one file), exit codes, provider
   selection, why there is no merge verb and why `workflows` is never requested.
-- [docs/register-your-app.md](docs/register-your-app.md): registering your own App, where to
+- [docs/setup.md](docs/setup.md): set the bot up for your own repositories from zero, with the pitfalls.
+- [docs/register-your-app.md](docs/register-your-app.md): registering your own App from a manifest, where to
   store the key, environment variables, rotation.
 - [docs/modules/automerge.md](docs/modules/automerge.md): the automerge module, its options, the
   differences to the personal-access-token workflow and how to set up a repository.
@@ -149,18 +150,30 @@ module refuses any file outside the `paths` of the policy. Reusable workflows
 [`.github/workflows/sync.yml`](.github/workflows/sync.yml)) and caller template
 ([`templates/deploy-bump.yml`](templates/deploy-bump.yml)). The deploy bump can carry extra files, such as a coverage badge, into the same commit (input `handover-artifact`).
 
-## Status: phase 2, pre-release
+## Status
 
-Policy schema, permission table, gate, token minting, HTTP adapter, CLI, the phase-1 verbs and
-their composite actions, the `release` and `open-pr` verbs, and the automerge, lockfiles,
-release and sync modules, all tested against fakes and mocked HTTP, plus the live end-to-end workflow.
+Released: the current version is v0.3.0 (see the [releases](https://github.com/lukislp/lktec-bot/releases)).
+The policy schema, permission table, gate, token minting, HTTP adapter, CLI, the verbs and their
+composite actions, and the `automerge`, `lockfiles`, `release` and `sync` modules are in
+production use across the maintainer's repositories, tested against fakes and mocked HTTP and by
+the live end-to-end workflow. This repository releases itself through its own `release` module.
 
-Deliberately not in this repository yet:
+Not in this repository yet: release mode `pr` (a reviewed release pull request with changelog and
+version files).
 
-- **Release mode `pr`** (a reviewed release pull request with changelog and version files).
-- **Releases and tags of this repository.** No version has been published; `hatch-vcs` derives
-  the version from tags once they exist. Until then pin the actions by commit SHA. The release
-  module's first pilot is `lukislp/mowdeck-hacs`.
+## Use it for your own repositories
+
+The workflows and actions work for any repository, under your own GitHub App:
+
+- [docs/setup.md](docs/setup.md): the path from zero (pin the workflows, register the App, install
+  it, set the two secrets, policy file, callers, first run) and the pitfalls we learned.
+- [docs/register-your-app.md](docs/register-your-app.md): registering the App from
+  [`manifest.json`](manifest.json), turning the returned key into `LKTEC_BOT_PRIVATE_KEY`,
+  rotation.
+
+The identity rule: every user registers their own App. Nothing in this repository ever carries
+the maintainer's App id or private key, and a workflow only ever sees the credentials you hand it
+as secrets.
 
 ## License
 

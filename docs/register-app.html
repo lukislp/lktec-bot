@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Register your lktec-bot App</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+  textarea { width: 100%; height: 16rem; font: 13px/1.4 ui-monospace, monospace; }
+  label, button { display: block; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<h1>Register your lktec-bot App</h1>
+<p>
+  Edit the <code>name</code> (it must be unique on GitHub), optionally enter an organisation, and
+  submit. GitHub shows its own confirmation page; nothing is created before you click
+  <em>Create GitHub App</em> there. This page is a copy of <code>manifest.json</code> in the
+  repository root and sends nothing anywhere except to github.com.
+</p>
+<form id="f" method="post">
+  <label for="org">Organisation (leave empty for your personal account)</label>
+  <input id="org" type="text" pattern="[A-Za-z0-9-]*" autocomplete="off">
+  <label for="manifest">Manifest</label>
+  <textarea id="manifest" name="manifest">{
+  "name": "REPLACE-ME-my-repo-bot",
+  "url": "https://github.com/lukislp/lktec-bot",
+  "description": "Least-privilege repository automation (lktec-bot): automerge, lockfiles, release, sync.",
+  "redirect_url": "http://localhost/",
+  "public": false,
+  "request_oauth_on_install": false,
+  "default_permissions": {
+    "contents": "write",
+    "pull_requests": "write",
+    "metadata": "read"
+  }
+}</textarea>
+  <button type="submit">Continue to GitHub</button>
+</form>
+<script>
+  var form = document.getElementById("f");
+  form.addEventListener("submit", function () {
+    var org = document.getElementById("org").value.trim();
+    var state = Array.from(crypto.getRandomValues(new Uint8Array(16)),
+      function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+    form.action = (org
+      ? "https://github.com/organizations/" + encodeURIComponent(org) + "/settings/apps/new"
+      : "https://github.com/settings/apps/new") + "?state=" + state;
+  });
+</script>
+</body>
+</html>
