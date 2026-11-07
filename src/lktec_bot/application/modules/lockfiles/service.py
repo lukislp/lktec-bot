@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``lockfiles`` module's command: ``commit`` the lock files regenerated for a Dependabot
 pull request onto its branch.
 

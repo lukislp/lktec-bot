@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 # Run one verb from a composite action. The verb name is the only argument; everything else
 # comes from INPUT_* variables the action sets from its inputs, and the App identity from
 # LKTEC_BOT_APP_ID / LKTEC_BOT_PRIVATE_KEY, which never appear on a command line.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The minimal GitHub surface the verbs need. Every method is one API call (or two, where a
 node id has to be resolved first, or a few, where a list is paginated)."""
 

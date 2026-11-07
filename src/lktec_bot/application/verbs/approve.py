@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``approve``: submit an approving review on an open, non-draft pull request.
 
 The verb is idempotent per head commit: when the bot already approved the pull request's

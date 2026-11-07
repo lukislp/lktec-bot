@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Table tests for the classification, ported from the cases the shared ``dependabot-auto-merge``
 workflow in ``lukislp/ci-workflows`` documents in its comments and handles in shell."""
 

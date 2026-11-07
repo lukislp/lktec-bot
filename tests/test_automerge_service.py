@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The automerge module's arm and sweep flows, through a real gate wired to the fakes."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``commit``: put file changes onto an existing branch as one commit that GitHub signs.
 
 The commit is made with the GraphQL mutation ``createCommitOnBranch``, so GitHub itself creates

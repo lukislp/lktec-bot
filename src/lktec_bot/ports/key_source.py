@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Where the App's identity comes from. Only the core ever touches the private key."""
 
 from __future__ import annotations

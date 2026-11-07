@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared setup for the per-verb gate tests: a gate wired to the fakes with the automerge
 module enabled, and a pull request to act on."""
 

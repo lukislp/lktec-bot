@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Adapters: the implementations of the ports that talk to the real world."""
 
 from lktec_bot.adapters._http_common import API_VERSION, DEFAULT_BASE_URL, USER_AGENT

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``Gate.read``: the read-only path a module command uses, under the gate's rules."""
 
 from __future__ import annotations

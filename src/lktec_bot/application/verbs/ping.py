@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``ping``: the no-op verb. It proves the whole gate path (policy, token, revoke) end to end
 without changing anything in the target repository."""
 

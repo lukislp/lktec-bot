@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The HTTP adapter's calls for releases, tags, comparisons, branches and pull requests."""
 
 from __future__ import annotations

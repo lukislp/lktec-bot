@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``release``: publish a GitHub release for a tag, creating the tag at a given commit.
 
 ``POST /releases`` with ``target_commitish`` makes GitHub create a lightweight tag ``--tag`` at

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The gate: policy, narrowed token, verb, revoke. There is no other way to run a verb."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The verb table: every verb maps to the GitHub App permissions it needs, and nothing more.
 
 The installation token minted for a verb is narrowed to exactly the grants listed here. The

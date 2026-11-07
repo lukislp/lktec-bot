@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Command line entry point. Verb subcommands are built from the verb registry.
 
 Exit codes: 0 the verb ran (or the policy allows it), 1 an error, 2 usage or configuration,

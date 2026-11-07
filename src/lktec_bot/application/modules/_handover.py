@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The handover directory a module's first job passes to the job that holds the credentials.
 
 Layout: ``manifest.txt`` (one repository path per line) and ``files/<repository path>``. The

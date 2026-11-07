@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``automerge`` module: classify Dependabot pull requests, arm the routine ones and keep
 open pull requests mergeable.
 

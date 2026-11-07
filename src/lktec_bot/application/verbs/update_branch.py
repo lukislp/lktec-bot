@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``update-branch``: merge the base branch into the pull request branch (the "Update branch"
 button). GitHub queues the merge commit and answers 202; a branch that already contains the
 base is reported as ``ok`` with a message, not as an error.

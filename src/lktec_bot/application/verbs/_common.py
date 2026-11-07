@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Small helpers shared by the pull request verbs. Not a verb: the leading underscore keeps
 ``load_verbs`` from importing it as one."""
 

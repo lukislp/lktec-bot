@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``open-pr``: open a pull request from a branch, or bring the open one up to date.
 
 An upsert keyed on ``head`` -> ``base``: when an open pull request for that pair exists, its

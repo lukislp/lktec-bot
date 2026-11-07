@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 # Assertions of the e2e workflow. $1 is the verb; RESULT, MESSAGE and URL are the action's
 # outputs, GH_TOKEN the workflow token (read-only, used for the checks below only).
 #

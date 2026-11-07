@@ -48,9 +48,10 @@ The maintainer aims to answer new issues and pull requests within 14 days.
 
 - **Python 3.13**, [PEP 8](https://peps.python.org/pep-0008/) as checked by ruff: the rule sets `E`, `F`, `I`, `UP`, `B`, `SIM`, `RUF` and `S` (flake8-bandit), line length 100, formatted with `ruff format`. Type hints everywhere, checked by mypy in strict mode (also for the tests). The configuration is in `pyproject.toml`; it is the style guide. A `# noqa` or `# type: ignore` names the rule and says why.
 - **Workflows and shell:** every `uses:` is pinned to a commit SHA (`tools/check_yaml.py` enforces it), workflows start from least-privilege `permissions`.
+- **Headers:** every Python and shell file starts with `# SPDX-FileCopyrightText: <year> <holder>` and `# SPDX-License-Identifier: Apache-2.0` after the shebang (`tools/check_headers.py` enforces it; `--fix` adds them).
 - **Everything:** `.editorconfig` (UTF-8, LF, final newline), English, comments that explain why rather than what.
 
-The required check `lint` runs ruff, ruff format, mypy and the YAML check, so a pull request with a lint warning cannot merge.
+The required check `lint` runs ruff, ruff format, mypy, the YAML check and the header check, so a pull request with a lint warning cannot merge.
 
 ## Developer Certificate of Origin
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Commit parsing, release rules and version arithmetic of the ``release`` module."""
 
 from __future__ import annotations
