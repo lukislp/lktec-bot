@@ -30,7 +30,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read # the assertion counts the bot's comments with GITHUB_TOKEN
-      issues: read
+      issues: write # the assertion lists the bot's issues; the last step closes the e2e issue
     env:
       POLICY_PATH: .github/lktec-bot.yml
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.number }}
@@ -104,3 +104,32 @@ jobs:
           MESSAGE: ${{ steps.comment.outputs.message }}
           URL: ${{ steps.comment.outputs.url }}
         run: bash .github/workflows/e2e-assert.sh comment
+
+      - id: issue
+        uses: ./actions/open-issue
+        with:
+          app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
+          private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}
+          module: lockfiles
+          title: lktec-bot e2e
+          body: |
+            The bot opened this issue through the gate (module `lockfiles`, verb `open-issue`,
+            token narrowed to `issues:write`, revoked afterwards). The E2E workflow closes it
+            again after every run; the next run reopens this same issue.
+          marker: e2e
+          labels: e2e-check
+      - name: Assert open-issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.issue.outputs.result }}
+          MESSAGE: ${{ steps.issue.outputs.message }}
+          URL: ${{ steps.issue.outputs.url }}
+          DECISION: ${{ steps.issue.outputs.decision }}
+          NUMBER: ${{ steps.issue.outputs.number }}
+        run: bash .github/workflows/e2e-assert.sh open-issue
+      - name: Close the e2e issue again
+        if: always() && steps.issue.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.issue.outputs.number }}
+        run: gh issue close "$NUMBER" --repo "$GITHUB_REPOSITORY"

@@ -27,9 +27,9 @@ PING = "version: 1\nmodules:\n  ping:\n    enabled: true\n"
 
 def test_registry_declares_the_shipped_modules() -> None:
     assert set(MODULES) == {"automerge", "lockfiles", "ping", "release", "sync"}
-    assert MODULES["release"].verbs == {Verb.RELEASE}
+    assert MODULES["release"].verbs == {Verb.RELEASE, Verb.OPEN_ISSUE}
     assert MODULES["release"].options is ReleaseOptions
-    assert MODULES["lockfiles"].verbs == {Verb.COMMIT, Verb.COMMENT}
+    assert MODULES["lockfiles"].verbs == {Verb.COMMIT, Verb.COMMENT, Verb.OPEN_ISSUE}
     assert MODULES["lockfiles"].options is LockfilesOptions
     assert MODULES["automerge"].verbs == {
         Verb.APPROVE,

@@ -175,6 +175,31 @@ where they differ. Outputs besides the common ones: `decision` (`opened`, `updat
     body-file: pr.md
 ```
 
+## `open-issue`
+
+Inputs: `module` (required: the `lockfiles`, `release` and `sync` modules may run it), `title`
+and `body` or `body-file` (required), `marker`, `labels` (comma-separated, each must exist in
+the repository), `reopen` (`true`, default). Opens an issue. With a `marker` the body gets an
+invisible `<!-- lktec-bot:<marker> -->` tag and later runs update the issue the bot opened with
+that tag instead of opening another: the title, the body and the labels it lacks are changed where
+they differ (labels are never removed), nothing differs: no write, a closed issue is reopened
+(`reopen: "false"` opens a new one instead). An issue by anyone else is never touched. Outputs
+besides the common ones: `decision` (`opened`, `updated`, `reopened`, `unchanged`,
+`denied`, `error`) and `number`. Permission: `issues:write`.
+
+```yaml
+- id: issue
+  uses: lukislp/lktec-bot/actions/open-issue@<sha> # vX.Y.Z
+  with:
+    app-id: ${{ vars.LKTEC_BOT_APP_ID }}
+    private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}
+    module: release
+    title: "deploy bump: image tag not found"
+    body-file: problem.md
+    marker: deploy-bump
+    labels: ci, deploy
+```
+
 ## Forks
 
 A `pull_request` run from a fork has no secrets, so the verb actions cannot mint a token

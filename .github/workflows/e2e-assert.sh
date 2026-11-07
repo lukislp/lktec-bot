@@ -46,4 +46,24 @@ case "$verb" in
     [ "$count" = 1 ] || { echo "::error::expected one marked bot comment, found $count"; exit 1; }
     echo "one marked bot comment: $URL"
     ;;
+  open-issue)
+    case "${DECISION:-}" in
+      opened | updated | reopened | unchanged) ;;
+      *)
+        echo "::error::unexpected open-issue decision: ${DECISION:-}"
+        exit 1
+        ;;
+    esac
+    # Exactly one open issue by the App carries the marker and the label, however often the
+    # workflow ran: every run reopens (or updates) the same issue and the last step closes it.
+    open="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=e2e-check&per_page=100" \
+      --jq '.[] | select(.pull_request == null and .user.type == "Bot" and ((.body // "") | contains("<!-- lktec-bot:e2e -->"))) | .number')"
+    count="$(printf '%s' "$open" | grep -c . || true)"
+    [ "$count" = 1 ] || { echo "::error::expected one open marked bot issue, found $count"; exit 1; }
+    [ "$open" = "${NUMBER:-}" ] || {
+      echo "::error::the open issue is #$open, the action reported #${NUMBER:-}"
+      exit 1
+    }
+    echo "one open marked bot issue: ${URL:-}"
+    ;;
 esac

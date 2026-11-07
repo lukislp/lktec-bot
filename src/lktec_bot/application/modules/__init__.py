@@ -82,9 +82,9 @@ register_module(
     {Verb.APPROVE, Verb.ENABLE_AUTOMERGE, Verb.UPDATE_BRANCH, Verb.COMMENT},
     AutomergeOptions,
 )
-register_module("lockfiles", {Verb.COMMIT, Verb.COMMENT}, LockfilesOptions)
-register_module("release", {Verb.RELEASE}, ReleaseOptions)
-register_module("sync", {Verb.COMMIT}, SyncOptions)
+register_module("lockfiles", {Verb.COMMIT, Verb.COMMENT, Verb.OPEN_ISSUE}, LockfilesOptions)
+register_module("release", {Verb.RELEASE, Verb.OPEN_ISSUE}, ReleaseOptions)
+register_module("sync", {Verb.COMMIT, Verb.OPEN_ISSUE}, SyncOptions)
 # ``ping`` exercises the whole gate end to end; it is a module of its own so that no module that
 # does real work has to be allowed to run it.
 register_module("ping", {Verb.PING})

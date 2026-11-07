@@ -9,11 +9,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from lktec_bot.adapters.github_http import GitHubHttpError
 from lktec_bot.ports.github_api import (
     BranchUpdate,
     CommitInfo,
     Comparison,
     CreatedCommit,
+    Issue,
     IssueComment,
     MergeMethod,
     PullRequest,
@@ -139,6 +141,13 @@ class FakeRepository:
     pulls_created: list[tuple[str, str, str, str, bool]] = field(default_factory=list)
     pulls_updated: list[tuple[int, str | None, str | None]] = field(default_factory=list)
     draft_changes: list[tuple[int, bool]] = field(default_factory=list)
+    # Issues by number (what ``list_issues`` filters), every issue written, and the labels the
+    # repository knows (``None``: any label is accepted; otherwise an unknown one is a 422).
+    issues: dict[int, Issue] = field(default_factory=dict)
+    issue_writes: list[tuple[str, int, dict[str, Any]]] = field(default_factory=list)
+    known_labels: set[str] | None = None
+    # Play a server that ignores ``creator=``: ``list_issues`` then lists everyone's issues.
+    list_ignores_creator: bool = False
 
 
 @dataclass
@@ -369,6 +378,82 @@ class FakeGitHubApi:
         self.calls.append(("update_issue_comment", (owner, repo, comment_id, body)))
         self.state.updated_comments.append((comment_id, body))
         return f"https://github.com/{owner}/{repo}/issues/comments/{comment_id}"
+
+    def list_issues(
+        self, owner: str, repo: str, *, creator: str, state: str = "all"
+    ) -> list[Issue]:
+        self.calls.append(("list_issues", (owner, repo, creator, state)))
+        return [
+            issue
+            for _, issue in sorted(self.state.issues.items())
+            if (self.state.list_ignores_creator or issue.author_login == creator)
+            and state in ("all", issue.state)
+        ]
+
+    def _check_labels(self, labels: Sequence[str]) -> None:
+        known = self.state.known_labels
+        unknown = [label for label in labels if known is not None and label not in known]
+        if unknown:
+            raise GitHubHttpError(
+                f"POST issues -> 422: Validation Failed: label {unknown[0]!r} does not exist",
+                status=422,
+            )
+
+    def create_issue(
+        self, owner: str, repo: str, *, title: str, body: str, labels: Sequence[str]
+    ) -> Issue:
+        self.calls.append(("create_issue", (owner, repo, title, body, tuple(labels))))
+        self._check_labels(labels)
+        number = max(self.state.issues, default=0) + 1
+        issue = Issue(
+            number=number,
+            title=title,
+            body=body,
+            state="open",
+            html_url=f"https://github.com/{owner}/{repo}/issues/{number}",
+            labels=tuple(labels),
+            author_login=BOT,
+        )
+        self.state.issues[number] = issue
+        self.state.issue_writes.append(
+            ("create", number, {"title": title, "body": body, "labels": list(labels)})
+        )
+        self.state.log.append(f"open-issue #{number}")
+        return issue
+
+    def update_issue(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        state: str | None = None,
+        labels: Sequence[str] | None = None,
+    ) -> Issue:
+        self.calls.append(("update_issue", (owner, repo, number)))
+        if labels is not None:
+            self._check_labels(labels)
+        changes: dict[str, Any] = {
+            key: value
+            for key, value in (("title", title), ("body", body), ("state", state))
+            if value is not None
+        }
+        if labels is not None:
+            changes["labels"] = list(labels)
+        current = self.state.issues[number]
+        issue = replace(
+            current,
+            title=current.title if title is None else title,
+            body=current.body if body is None else body,
+            state=current.state if state is None else state,
+            labels=current.labels if labels is None else tuple(labels),
+        )
+        self.state.issues[number] = issue
+        self.state.issue_writes.append(("update", number, changes))
+        self.state.log.append(f"update-issue #{number}")
+        return issue
 
     def graphql(self, query: str, variables: Mapping[str, Any] | None = None) -> dict[str, Any]:
         self.calls.append(("graphql", (query, dict(variables or {}))))

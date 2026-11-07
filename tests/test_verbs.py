@@ -46,6 +46,7 @@ def test_the_phase_one_verbs_ship_in_this_release() -> None:
         Verb.COMMIT,
         Verb.RELEASE,
         Verb.OPEN_PR,
+        Verb.OPEN_ISSUE,
     }
 
 
@@ -78,6 +79,13 @@ def test_every_shipped_verb_declares_its_options() -> None:
         "title",
         "body",
         "draft",
+    ]
+    assert [option.name for option in registry[Verb.OPEN_ISSUE].options] == [
+        "title",
+        "body",
+        "marker",
+        "label",
+        "reopen",
     ]
     assert registry[Verb.COMMENT].takes_target
     assert not registry[Verb.APPROVE].takes_target
