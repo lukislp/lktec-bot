@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Domain layer: pure models and decisions. No I/O, no GitHub, no environment."""
 
 from lktec_bot.domain.permissions import Grant, Permission, Target, Verb, permissions_for

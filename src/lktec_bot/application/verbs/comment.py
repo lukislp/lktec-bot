@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``comment``: post a comment on a pull request or an issue, or update the bot's own earlier
 comment when a marker is given.
 

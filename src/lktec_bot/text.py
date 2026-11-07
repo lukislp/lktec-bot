@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Pure text helpers for everything the bot prints or writes to a job summary.
 
 Messages reach the output from places a repository owner does not control: GitHub error

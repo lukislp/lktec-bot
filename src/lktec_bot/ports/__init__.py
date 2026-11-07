@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Ports: the protocols the application layer talks to. Adapters implement them."""
 
 from lktec_bot.ports.github_api import GitHubApi, GitHubApiFactory

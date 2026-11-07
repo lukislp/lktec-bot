@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``release run`` command: planning, the verb call, dry run, skips and failures."""
 
 from __future__ import annotations

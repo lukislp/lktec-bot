@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Release notes in semantic-release's style. Pure and deterministic: same input, same text."""
 
 from __future__ import annotations

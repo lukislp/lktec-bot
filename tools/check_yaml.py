@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Strict YAML check for workflows, actions and the policy file.
 
 Every file must parse with ``yaml.safe_load``, must not repeat a mapping key (PyYAML would

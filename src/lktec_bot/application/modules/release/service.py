@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``release`` module's command: ``run`` decides whether the head of the release branch
 carries a release and, unless it is a dry run, publishes it with the ``release`` verb.
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """In-memory ports for the gate tests. They record every call so tests can assert on them."""
 
 from __future__ import annotations

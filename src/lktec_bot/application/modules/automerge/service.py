@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``automerge`` module's commands: ``arm`` one pull request, ``sweep`` all of them.
 
 Both only read through :meth:`Gate.read` (a token narrowed to ``pull_requests:read``) and write

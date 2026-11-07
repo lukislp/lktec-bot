@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The lock files the module knows, and how a path is told to belong to one.
 
 The regenerating job runs a pull request's code, so what it hands over is untrusted. The module

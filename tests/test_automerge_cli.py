@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``automerge arm`` and ``automerge sweep`` commands: output, summary, exit codes."""
 
 from __future__ import annotations

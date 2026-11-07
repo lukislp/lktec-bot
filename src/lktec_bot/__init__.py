@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """lktec-bot: a GitHub App identity plus least-privilege verbs, opt-in per repository."""
 
 try:

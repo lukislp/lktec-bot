@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Property-based tests (hypothesis) for the pure input rules of the bot."""
 
 from __future__ import annotations

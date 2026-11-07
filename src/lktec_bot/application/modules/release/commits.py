@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Conventional Commit parsing, release rules and version arithmetic. Pure: no I/O.
 
 Behaves like semantic-release's commit analyzer with the Angular defaults (breaking: major,

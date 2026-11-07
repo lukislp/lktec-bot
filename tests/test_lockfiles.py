@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``lockfiles`` module: options, handover checks, gates and the commit it makes."""
 
 from __future__ import annotations

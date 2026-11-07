@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``lktec-bot sync commit``: output, outputs file and exit codes."""
 
 from __future__ import annotations

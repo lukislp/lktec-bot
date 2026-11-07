@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Classification of Dependabot pull requests. Pure: text in, decision out, no I/O.
 
 This is the port of the rules of the shared ``dependabot-auto-merge`` workflow in

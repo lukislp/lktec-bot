@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Options of the ``automerge`` module, as they appear under ``modules.automerge`` in
 ``.github/lktec-bot.yml``. Unknown keys are errors, so a typo never changes behaviour."""
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """GitHub Actions output: the job summary and secret masking.
 
 Outside Actions the summary goes to stdout and masking is a no-op.

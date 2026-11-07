@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Installation tokens minted from the App's private key, narrowed to one repo and one verb."""
 
 from __future__ import annotations

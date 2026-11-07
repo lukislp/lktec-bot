@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Application layer: the gate every verb goes through, the module registry and the verbs."""
 
 from lktec_bot.application.gate import (

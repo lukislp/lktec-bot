@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Repository paths the bot may write: pure rules, no I/O.
 
 A path handed to a verb that changes files comes from a module or a command line, and for the

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The ``sync`` module's command: ``commit`` generated files onto a branch.
 
 A first job generates the files (it may run code and holds no secret); this command runs in a

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Constants and headers shared by the HTTP adapters, so that neither imports the other."""
 
 from __future__ import annotations

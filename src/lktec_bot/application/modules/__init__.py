@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """The module registry: which modules exist, which verbs each may run, which options it takes.
 
 A module is the caller of a verb (``--module automerge``). The policy file enables a module;

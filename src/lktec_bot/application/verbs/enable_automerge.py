@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """``enable-automerge``: ask GitHub to merge the pull request once its required checks and
 reviews are green. The bot never merges; branch protection does.
 

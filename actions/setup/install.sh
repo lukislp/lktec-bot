@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 # Install lktec-bot from the repository that holds this action.
 #
 # Every dependency, the build backend included, is installed with its hash from an export of

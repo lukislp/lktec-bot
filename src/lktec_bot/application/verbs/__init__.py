@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Lukas Koerber
+# SPDX-License-Identifier: Apache-2.0
+
 """Verb registry. Adding a verb is one new file in this package.
 
 A verb module declares its handler, its grants and its command line options together::
