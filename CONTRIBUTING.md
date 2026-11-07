@@ -7,6 +7,17 @@ repository is hard-coded here, everything comes from configuration or arguments)
 
 ## How changes get in
 
+## Your first pull request
+
+1. **Fork and clone** the repository, then create a branch for your change.
+2. **Set up the project:** install Python 3.13+ and [uv](https://docs.astral.sh/uv/), then run `uv sync`.
+3. **Check the baseline:** run `uv run pytest` before making changes.
+4. **Make your change:** follow the [architecture](docs/architecture.md) and [coding style](#coding-style) guidelines.
+5. **Run the checks:**
+   ```sh
+   uv run ruff check . && uv run ruff format . && uv run mypy src tests
+   uv run pytest
+
 The maintainer aims to answer new issues and pull requests within 14 days.
 
 1. Open an issue first for anything bigger than a typo, so the direction can be agreed before
