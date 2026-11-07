@@ -54,16 +54,30 @@ case "$verb" in
         exit 1
         ;;
     esac
-    # Exactly one open issue by the App carries the marker and the label, however often the
-    # workflow ran: every run reopens (or updates) the same issue and the last step closes it.
-    open="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=e2e-check&per_page=100" \
-      --jq '.[] | select(.pull_request == null and .user.type == "Bot" and ((.body // "") | contains("<!-- lktec-bot:e2e -->"))) | .number')"
-    count="$(printf '%s' "$open" | grep -c . || true)"
-    [ "$count" = 1 ] || { echo "::error::expected one open marked bot issue, found $count"; exit 1; }
-    [ "$open" = "${NUMBER:-}" ] || {
-      echo "::error::the open issue is #$open, the action reported #${NUMBER:-}"
+    [ -n "${NUMBER:-}" ] || { echo "::error::the action reported no issue number"; exit 1; }
+    # Reading one issue is consistent right after a write; the list is not (a freshly opened
+    # or reopened issue takes a few seconds to show up in it). So the reported issue is checked
+    # directly, and the list only guards against a second marked issue accumulating, with a
+    # short retry until the fresh one has appeared.
+    issue="repos/${GITHUB_REPOSITORY}/issues/${NUMBER}"
+    state="$(gh api "$issue" --jq .state)"
+    type="$(gh api "$issue" --jq .user.type)"
+    labelled="$(gh api "$issue" --jq '[.labels[].name] | index("e2e-check") != null')"
+    marked="$(gh api "$issue" --jq '(.body // "") | contains("<!-- lktec-bot:e2e -->")')"
+    if [ "$state" != open ] || [ "$type" != Bot ] || [ "$labelled" != true ] || [ "$marked" != true ]; then
+      echo "::error::issue #$NUMBER is not the open, labelled, marked bot issue (state=$state type=$type labelled=$labelled marked=$marked)"
       exit 1
-    }
-    echo "one open marked bot issue: ${URL:-}"
+    fi
+    count=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      all="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?state=all&labels=e2e-check&per_page=100" \
+        --jq '.[] | select(.pull_request == null and .user.type == "Bot" and ((.body // "") | contains("<!-- lktec-bot:e2e -->"))) | .number')"
+      count="$(printf '%s' "$all" | grep -c . || true)"
+      [ "$count" -ge 1 ] && break
+      sleep 3
+    done
+    [ "$count" = 1 ] || { echo "::error::expected exactly one marked bot issue, found $count: $all"; exit 1; }
+    [ "$all" = "$NUMBER" ] || { echo "::error::the marked issue is #$all, the action reported #$NUMBER"; exit 1; }
+    echo "one marked bot issue, open: ${URL:-}"
     ;;
 esac
