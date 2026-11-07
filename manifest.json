@@ -8,6 +8,8 @@
   "default_permissions": {
     "contents": "write",
     "pull_requests": "write",
+    "issues": "write",
+    "checks": "write",
     "metadata": "read"
   }
 }

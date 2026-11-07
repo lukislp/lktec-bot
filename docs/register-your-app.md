@@ -20,14 +20,14 @@ with exactly the permissions the bot needs and nothing else:
 | `default_permissions.contents`          | `write`                                 | `enable-automerge`, `update-branch`, `commit`, `release`. Tokens are narrowed per verb; the App's maximum is not what a verb gets. |
 | `default_permissions.pull_requests`     | `write`                                 | `comment`, `approve`, `enable-automerge`, `update-branch`, `open-pr`. |
 | `default_permissions.metadata`          | `read`                                  | Always included by GitHub.                                     |
-| `default_permissions.checks`            | `write`                                 | `check`. Not in `manifest.json` yet: add it on the App's settings page and accept it on every installation before running the verb. |
-| `issues` (add on the settings page) | `write`                       | `open-issue`, and `comment` on an issue (`--target issue`). The manifest does not ask for it; add it when you use either, and accept it on the installation. |
+| `default_permissions.issues`            | `write`                                 | `open-issue`, and `comment` on an issue (`--target issue`).      |
+| `default_permissions.checks`            | `write`                                 | `check`.                                                       |
 | `request_oauth_on_install`              | `false`                                 | The bot has no user flow.                                      |
 | `redirect_url`                          | `http://localhost/`                     | Where GitHub sends the one-time code (see below).              |
 | no `hook_attributes`, no `default_events` | -                                     | The bot runs from workflows; it receives no events and has no webhook. |
 
 **Never grant `workflows`**: the bot never requests it and has no use for it (see
-[architecture.md](architecture.md)). Permissions for verbs that do not ship yet (`deployments: write`) can be added on the App's settings page later.
+[architecture.md](architecture.md)). The permission for the one verb that does not ship yet (`deployments: write`) can be added on the App's settings page later. An App registered from an earlier manifest gets `issues` and `checks` the same way; accept them on the installation afterwards.
 
 ### The flow
 
@@ -94,7 +94,7 @@ Without the manifest, a pre-filled form works too (replace `name` and `url`; for
 organisation use `https://github.com/organizations/<org>/settings/apps/new?...`):
 
 ```
-https://github.com/settings/apps/new?name=my-repo-bot&url=https://github.com/you/your-repo&webhook_active=false&public=false&contents=write&pull_requests=write
+https://github.com/settings/apps/new?name=my-repo-bot&url=https://github.com/you/your-repo&webhook_active=false&public=false&contents=write&pull_requests=write&issues=write&checks=write
 ```
 
 Keep "Where can this GitHub App be installed?" at *Only on this account* and submit. Then, on
