@@ -18,6 +18,7 @@ import httpx
 from lktec_bot.adapters._http_common import DEFAULT_BASE_URL, github_headers
 from lktec_bot.ports.github_api import (
     BranchUpdate,
+    CheckRun,
     CommitInfo,
     Comparison,
     CreatedCommit,
@@ -412,6 +413,69 @@ class HttpGitHubApi:
         entries = self._paginate(f"/repos/{owner}/{repo}/commits", {"sha": sha})
         return [_commit_info(entry) for entry in entries]
 
+    def list_check_runs(self, owner: str, repo: str, sha: str, name: str) -> list[CheckRun]:
+        entries = self._paginate(
+            f"/repos/{owner}/{repo}/commits/{sha}/check-runs",
+            {"check_name": name},
+            key="check_runs",
+        )
+        return [_check_run(entry) for entry in entries]
+
+    def create_check_run(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        name: str,
+        sha: str,
+        status: str,
+        conclusion: str | None,
+        details_url: str | None,
+        external_id: str | None,
+        title: str,
+        summary: str,
+        text: str | None,
+        annotations: Sequence[Mapping[str, Any]],
+    ) -> CheckRun:
+        body: dict[str, Any] = {"name": name, "head_sha": sha, "status": status}
+        body.update(
+            _present(conclusion=conclusion, details_url=details_url, external_id=external_id)
+        )
+        body["output"] = _present(
+            title=title, summary=summary, text=text, annotations=list(annotations) or None
+        )
+        response = self._request("POST", f"/repos/{owner}/{repo}/check-runs", json=body)
+        return _check_run(response.json())
+
+    def update_check_run(
+        self,
+        owner: str,
+        repo: str,
+        check_run_id: int,
+        *,
+        status: str | None = None,
+        conclusion: str | None = None,
+        details_url: str | None = None,
+        external_id: str | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        text: str | None = None,
+        annotations: Sequence[Mapping[str, Any]] | None = None,
+    ) -> CheckRun:
+        body = _present(
+            status=status,
+            conclusion=conclusion,
+            details_url=details_url,
+            external_id=external_id,
+        )
+        output = _present(title=title, summary=summary, text=text, annotations=annotations)
+        if output:
+            body["output"] = output
+        response = self._request(
+            "PATCH", f"/repos/{owner}/{repo}/check-runs/{check_run_id}", json=body
+        )
+        return _check_run(response.json())
+
     def find_open_pull_request(
         self, owner: str, repo: str, head: str, base: str
     ) -> PullRequest | None:
@@ -496,8 +560,13 @@ class HttpGitHubApi:
 
     # -- transport -------------------------------------------------------------------------
 
-    def _paginate(self, path: str, params: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
+    def _paginate(
+        self, path: str, params: Mapping[str, str] | None = None, *, key: str | None = None
+    ) -> list[dict[str, Any]]:
         """Every entry of a list endpoint, page by page, until a page is short.
+
+        ``key`` names the member that holds the list for the endpoints that wrap it in an
+        object (``{"total_count": 3, "check_runs": [...]}``).
 
         An endpoint that ignores ``page`` would answer every page alike; such a page is
         recognised (same first entry as the page before) and the walk stops, and no walk goes
@@ -512,6 +581,8 @@ class HttpGitHubApi:
                 params={**(params or {}), "per_page": _PAGE_SIZE, "page": str(page)},
             )
             payload = response.json()
+            if key is not None:
+                payload = payload.get(key) if isinstance(payload, dict) else None
             if not isinstance(payload, list):
                 raise GitHubHttpError(f"GET {path} did not answer with a list")
             if page > 1 and payload and payload[0] == previous_first:
@@ -690,6 +761,39 @@ def _pull_request(payload: object, number: int) -> PullRequest:
         author_login=_login(payload),
         merge_state=str(payload.get("mergeable_state") or "").upper(),
     )
+
+
+def _present(**fields: Any) -> dict[str, Any]:
+    """The fields that are not ``None``; ``None`` means "leave alone" in a PATCH body."""
+    return {name: value for name, value in fields.items() if value is not None}
+
+
+def _check_run(payload: object) -> CheckRun:
+    if not isinstance(payload, dict) or not isinstance(payload.get("id"), int):
+        raise GitHubHttpError("a check run in the API answer has no id")
+    output = payload.get("output")
+    output = output if isinstance(output, dict) else {}
+    app = payload.get("app")
+    app = app if isinstance(app, dict) else {}
+    app_id = app.get("id")
+    return CheckRun(
+        id=payload["id"],
+        html_url=str(payload.get("html_url") or ""),
+        name=str(payload.get("name") or ""),
+        status=str(payload.get("status") or ""),
+        conclusion=_optional(payload.get("conclusion")),
+        details_url=_optional(payload.get("details_url")),
+        title=_optional(output.get("title")),
+        summary=_optional(output.get("summary")),
+        text=_optional(output.get("text")),
+        app_id=app_id if isinstance(app_id, int) else None,
+        app_slug=str(app.get("slug") or ""),
+        external_id=_optional(payload.get("external_id")),
+    )
+
+
+def _optional(value: object) -> str | None:
+    return None if value is None else str(value)
 
 
 def _commit_info(entry: Mapping[str, Any]) -> CommitInfo:

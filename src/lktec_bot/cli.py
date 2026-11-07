@@ -344,7 +344,7 @@ def add_verb_command(spec: VerbSpec) -> None:
 
 # Verbs that report a ``decision`` output; when the gate stops them (denied, error before the
 # handler ran) the decision is the outcome itself.
-DECISION_VERBS = frozenset({Verb.RELEASE, Verb.OPEN_PR})
+DECISION_VERBS = frozenset({Verb.RELEASE, Verb.OPEN_PR, Verb.CHECK})
 
 
 def _report(request: VerbRequest, result: VerbResult) -> None:

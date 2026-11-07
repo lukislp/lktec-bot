@@ -183,8 +183,8 @@ whole project is reviewed in one place:
 | `deployment`       | `deployments:write`                      |
 
 The shipped verbs are `ping`, `comment`, `approve`, `enable-automerge`, `update-branch`, `commit`,
-`release` and `open-pr`. `tests/test_verbs.py` pins the set of shipped verbs; adding one updates
-that line on purpose. No shipped module may run `open-pr` yet: it is for the release module's
+`release`, `open-pr` and `check`. `tests/test_verbs.py` pins the set of shipped verbs; adding one
+updates that line on purpose. No shipped module may run `open-pr` yet: it is for the release module's
 planned `pr` mode and for add-ons, and a module gets it by adding it to its verb set.
 
 | Verb               | Options                                   | Behaviour                                                                 |
@@ -197,11 +197,12 @@ planned `pr` mode and for add-ons, and a module gets it by adding it to its verb
 | `commit`           | `--branch B [--from BRANCH] --message HEADLINE [--body\|--body-file] [--add PATH=FILE]... [--delete PATH]... [--expected-head OID]` | GraphQL `createCommitOnBranch`: one commit that GitHub signs (verified; author is the App's bot, committer is GitHub); the branch must exist, unless `--from` names a branch to create it from (`POST git/refs` at that branch's head, only when the branch is missing; an existing branch is never moved and no ref is force-updated); `expectedHeadOid` is `--expected-head` or the head resolved right before, so a concurrent push fails the mutation instead of being overwritten; refuses absolute paths, `..`, `.git` and everything under `.github/workflows/` (the App has no `workflows` permission) |
 | `release`          | `--tag T --sha SHA --name TITLE [--body\|--body-file] [--latest\|--no-latest] [--prerelease]` | `POST releases` with `target_commitish`: GitHub creates the lightweight tag at `SHA` when it does not exist. Release exists and the tag points at `SHA`: `unchanged`; the tag exists at another commit: `error`, a tag is never moved. Outputs `decision` (`created`, `unchanged`, `error`), `url`, `tag` |
 | `open-pr`          | `--head B --base B --title T [--body\|--body-file] [--draft]` | upsert: an open pull request `head` into `base` gets its title, body (only when given) and draft state changed to what was asked, only where they differ (the draft state through GraphQL, REST cannot toggle it); none exists: one is opened. Outputs `decision` (`opened`, `updated`, `unchanged`, `error`), `url`, `number` |
+| `check`            | `--sha SHA --name N --title T --summary TEXT\|--summary-file F [--text\|--text-file] [--status queued\|in_progress\|completed] [--conclusion C] [--details-url URL] [--external-id ID] [--annotations-file F]` | upsert of a check run keyed on (commit `SHA`, `N`, this App): `GET commits/SHA/check-runs?check_name=N`, keep the runs whose `app.slug` is the bot's login without `[bot]` (the App id is not known to verbs; a run of another App is never touched), take the highest id; none: `POST check-runs`; one that differs in status, conclusion, title, summary, text (and details URL or external id when given): `PATCH check-runs/ID`; equal: `unchanged`, no write. `--conclusion` is required for `completed` and refused otherwise; `action_required` needs `--details-url`. Annotations (JSON array, at most 500) go 50 per request, the rest as further updates; a run with annotations always updates, and GitHub appends them. Outputs `decision` (`created`, `updated`, `unchanged`, `error`), `url`, `id` |
 
 Every result carries the relevant URL (comment, review, pull request or release). Nothing a verb
 prints or stores contains a token. A verb may report more `$GITHUB_OUTPUT` keys than `result`,
-`message` and `url` through `VerbResult.outputs` (`decision`, `tag`, `number`); for `release` and
-`open-pr`, `decision` is the outcome itself when the gate stops the run before the handler.
+`message` and `url` through `VerbResult.outputs` (`decision`, `tag`, `number`, `id`); for `release`,
+`open-pr` and `check`, `decision` is the outcome itself when the gate stops the run before the handler.
 
 The command `lktec-bot release run` (the release module) and the verb `lktec-bot release` share a
 name; click cannot hold a group and a command under one name, so the module command is

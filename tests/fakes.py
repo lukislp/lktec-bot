@@ -11,6 +11,7 @@ from typing import Any
 
 from lktec_bot.ports.github_api import (
     BranchUpdate,
+    CheckRun,
     CommitInfo,
     Comparison,
     CreatedCommit,
@@ -26,6 +27,7 @@ from lktec_bot.ports.github_api import (
 from lktec_bot.ports.token_provider import TokenError
 
 BOT = "fake-app[bot]"
+BOT_SLUG = "fake-app"
 
 
 @dataclass
@@ -139,6 +141,11 @@ class FakeRepository:
     pulls_created: list[tuple[str, str, str, str, bool]] = field(default_factory=list)
     pulls_updated: list[tuple[int, str | None, str | None]] = field(default_factory=list)
     draft_changes: list[tuple[int, bool]] = field(default_factory=list)
+    # Check runs by commit sha, of any App (``app_slug`` tells them apart); what
+    # ``list_check_runs`` filters by name. Runs the fake creates belong to ``BOT_SLUG``.
+    check_runs: dict[str, list[CheckRun]] = field(default_factory=dict)
+    # Every check run write in order: ("create" | "update", check run id, keyword arguments).
+    check_calls: list[tuple[str, int, dict[str, Any]]] = field(default_factory=list)
 
 
 @dataclass
@@ -296,6 +303,104 @@ class FakeGitHubApi:
     def list_commits(self, owner: str, repo: str, sha: str) -> list[CommitInfo]:
         self.calls.append(("list_commits", (owner, repo, sha)))
         return list(self.state.history)
+
+    def list_check_runs(self, owner: str, repo: str, sha: str, name: str) -> list[CheckRun]:
+        self.calls.append(("list_check_runs", (owner, repo, sha, name)))
+        return [run for run in self.state.check_runs.get(sha, []) if run.name == name]
+
+    def create_check_run(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        name: str,
+        sha: str,
+        status: str,
+        conclusion: str | None,
+        details_url: str | None,
+        external_id: str | None,
+        title: str,
+        summary: str,
+        text: str | None,
+        annotations: Sequence[Mapping[str, Any]],
+    ) -> CheckRun:
+        self.calls.append(("create_check_run", (owner, repo, sha, name)))
+        runs = self.state.check_runs.setdefault(sha, [])
+        known = (run.id for existing in self.state.check_runs.values() for run in existing)
+        run_id = 1 + max(known, default=0)
+        run = CheckRun(
+            id=run_id,
+            html_url=f"https://github.com/{owner}/{repo}/runs/{run_id}",
+            name=name,
+            status=status,
+            conclusion=conclusion,
+            details_url=details_url,
+            title=title,
+            summary=summary,
+            text=text,
+            app_id=1,
+            app_slug=BOT_SLUG,
+            external_id=external_id,
+        )
+        runs.append(run)
+        self.state.check_calls.append(
+            (
+                "create",
+                run_id,
+                {
+                    "name": name,
+                    "sha": sha,
+                    "status": status,
+                    "conclusion": conclusion,
+                    "details_url": details_url,
+                    "external_id": external_id,
+                    "title": title,
+                    "summary": summary,
+                    "text": text,
+                    "annotations": [dict(entry) for entry in annotations],
+                },
+            )
+        )
+        self.state.log.append(f"check-run create {name}")
+        return run
+
+    def update_check_run(
+        self,
+        owner: str,
+        repo: str,
+        check_run_id: int,
+        *,
+        status: str | None = None,
+        conclusion: str | None = None,
+        details_url: str | None = None,
+        external_id: str | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        text: str | None = None,
+        annotations: Sequence[Mapping[str, Any]] | None = None,
+    ) -> CheckRun:
+        self.calls.append(("update_check_run", (owner, repo, check_run_id)))
+        given: dict[str, Any] = {
+            "status": status,
+            "conclusion": conclusion,
+            "details_url": details_url,
+            "external_id": external_id,
+            "title": title,
+            "summary": summary,
+            "text": text,
+            "annotations": None if annotations is None else [dict(entry) for entry in annotations],
+        }
+        self.state.check_calls.append(
+            ("update", check_run_id, {k: v for k, v in given.items() if v is not None})
+        )
+        self.state.log.append(f"check-run update {check_run_id}")
+        changes = {k: v for k, v in given.items() if v is not None and k != "annotations"}
+        for runs in self.state.check_runs.values():
+            for index, run in enumerate(runs):
+                if run.id == check_run_id:
+                    runs[index] = replace(run, **changes)
+                    return runs[index]
+        raise RuntimeError(f"PATCH check-runs/{check_run_id} -> 404: Not Found")
 
     def find_open_pull_request(
         self, owner: str, repo: str, head: str, base: str

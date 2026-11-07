@@ -46,4 +46,23 @@ case "$verb" in
     [ "$count" = 1 ] || { echo "::error::expected one marked bot comment, found $count"; exit 1; }
     echo "one marked bot comment: $URL"
     ;;
+  check)
+    # created on the first run for a commit, updated when the run differs, unchanged on a
+    # re-run of the same commit.
+    case "${DECISION:-}" in
+      created | updated | unchanged) ;;
+      *) echo "::error::unexpected check decision: ${DECISION:-}"; exit 1 ;;
+    esac
+    # Exactly one check run of that name on the commit, and it is the one the verb reported.
+    # The name is the bot's alone: no other App or workflow job publishes it.
+    runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=lktec-bot%20e2e" \
+      --jq '[.check_runs[] | {url: .html_url, app: .app.slug}]')"
+    count="$(jq 'length' <<<"$runs")"
+    [ "$count" = 1 ] || { echo "::error::expected one check run, found $count: $runs"; exit 1; }
+    [ "$(jq -r '.[0].url' <<<"$runs")" = "$URL" ] || {
+      echo "::error::the check run on the commit is not the one the verb reported ($URL): $runs"
+      exit 1
+    }
+    echo "one check run by $(jq -r '.[0].app' <<<"$runs"): $URL"
+    ;;
 esac

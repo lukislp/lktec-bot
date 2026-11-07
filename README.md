@@ -91,7 +91,7 @@ so far).
 
 The phase-1 verbs ship: `ping`, `comment` (with an optional marker to update the bot's own
 earlier comment instead of adding one), `approve`, `enable-automerge` and `update-branch`, and
-`commit` (a commit on a branch that GitHub signs; CLI only so far), `release` and `open-pr`. Each
+`commit` (a commit on a branch that GitHub signs; CLI only so far), `release`, `open-pr` and `check` (a check run on a commit, created or updated). Each
 verb except `commit` is a CLI subcommand and a composite action under [`actions/`](actions/README.md):
 
 ```yaml

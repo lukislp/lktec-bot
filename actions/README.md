@@ -175,6 +175,34 @@ where they differ. Outputs besides the common ones: `decision` (`opened`, `updat
     body-file: pr.md
 ```
 
+## `check`
+
+Inputs: `module` (required: `lockfiles`, `release` and `sync` may run `check`), `name`, `title`
+(required, one line each), `summary` or `summary-file` (markdown, one of them is required), `sha`
+(default `${{ github.sha }}`), `text` or `text-file`, `status` (`completed`, default; `queued`,
+`in_progress`), `conclusion` (`success`, default; `failure`, `neutral`, `cancelled`, `skipped`,
+`timed_out`, `action_required`; only used when the status is `completed`), `details-url` (an
+`https://` URL, required for `action_required`), `external-id` and `annotations-file` (a JSON
+array of at most 500 annotations). Publishes a check run of the App on the commit, or updates the
+one of the App with the same name on that commit; a check run of another App is never touched.
+Unchanged content is not written. Outputs besides the common ones: `decision` (`created`,
+`updated`, `unchanged`, `denied`, `error`) and `id`. Permission: `checks:write`, which the App
+needs on its settings page and on every installation.
+
+```yaml
+- id: check
+  uses: lukislp/lktec-bot/actions/check@<sha> # vX.Y.Z
+  with:
+    app-id: ${{ vars.LKTEC_BOT_APP_ID }}
+    private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}
+    module: lockfiles
+    sha: ${{ github.event.pull_request.head.sha }}
+    name: lock files
+    title: Lock files regenerated
+    summary-file: summary.md
+    conclusion: neutral
+```
+
 ## Forks
 
 A `pull_request` run from a fork has no secrets, so the verb actions cannot mint a token

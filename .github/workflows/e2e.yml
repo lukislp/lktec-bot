@@ -31,6 +31,7 @@ jobs:
       contents: read
       pull-requests: read # the assertion counts the bot's comments with GITHUB_TOKEN
       issues: read
+      checks: read # the assertion lists the check runs on the commit with GITHUB_TOKEN
     env:
       POLICY_PATH: .github/lktec-bot.yml
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.number }}
@@ -104,3 +105,24 @@ jobs:
           MESSAGE: ${{ steps.comment.outputs.message }}
           URL: ${{ steps.comment.outputs.url }}
         run: bash .github/workflows/e2e-assert.sh comment
+
+      # A check run of the App on the commit (module release, verb check, checks:write). One run
+      # per commit and name, updated on every run, never a second one.
+      - id: check
+        uses: ./actions/check
+        with:
+          app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
+          private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}
+          module: release
+          name: lktec-bot e2e
+          title: E2E
+          summary: The bot published this check run through the gate (module release, verb check).
+          conclusion: success
+      - name: Assert check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.check.outputs.result }}
+          MESSAGE: ${{ steps.check.outputs.message }}
+          URL: ${{ steps.check.outputs.url }}
+          DECISION: ${{ steps.check.outputs.decision }}
+        run: bash .github/workflows/e2e-assert.sh check

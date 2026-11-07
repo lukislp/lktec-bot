@@ -118,6 +118,28 @@ class Comparison:
     commits: tuple[CommitInfo, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class CheckRun:
+    """One check run on a commit, as far as the check verb needs to know.
+
+    ``app_id`` is ``None`` when GitHub does not report the App; ``app_slug`` is empty then too.
+    ``title``, ``summary`` and ``text`` come from the run's ``output``.
+    """
+
+    id: int
+    html_url: str
+    name: str
+    status: str  # "queued", "in_progress" or "completed"
+    conclusion: str | None
+    details_url: str | None
+    title: str | None
+    summary: str | None
+    text: str | None
+    app_id: int | None
+    app_slug: str
+    external_id: str | None = None
+
+
 class BranchUpdate(StrEnum):
     """What ``update_branch`` achieved: the update was queued, or there was nothing to do."""
 
@@ -247,6 +269,51 @@ class GitHubApi(Protocol):
 
     def list_commits(self, owner: str, repo: str, sha: str) -> Sequence[CommitInfo]:
         """Every commit reachable from ``sha``, newest first."""
+        ...
+
+    def list_check_runs(self, owner: str, repo: str, sha: str, name: str) -> Sequence[CheckRun]:
+        """Every check run called ``name`` on commit ``sha``, of any App, every page fetched."""
+        ...
+
+    def create_check_run(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        name: str,
+        sha: str,
+        status: str,
+        conclusion: str | None,
+        details_url: str | None,
+        external_id: str | None,
+        title: str,
+        summary: str,
+        text: str | None,
+        annotations: Sequence[Mapping[str, Any]],
+    ) -> CheckRun:
+        """Create a check run on ``sha``. ``annotations`` are at most 50, already validated."""
+        ...
+
+    def update_check_run(
+        self,
+        owner: str,
+        repo: str,
+        check_run_id: int,
+        *,
+        status: str | None = None,
+        conclusion: str | None = None,
+        details_url: str | None = None,
+        external_id: str | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        text: str | None = None,
+        annotations: Sequence[Mapping[str, Any]] | None = None,
+    ) -> CheckRun:
+        """Change a check run; ``None`` leaves a field alone.
+
+        GitHub wants ``title`` and ``summary`` in ``output`` whenever any output field is sent,
+        so the caller passes them together with ``text`` or ``annotations``.
+        """
         ...
 
     def find_open_pull_request(

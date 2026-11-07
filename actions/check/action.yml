@@ -1,0 +1,118 @@
+name: lktec-bot check
+description: >-
+  Publish a check run of the App on a commit, or update the one of the App with the same name
+  on that commit (title, summary, text, status, conclusion, annotations). Requires the setup
+  action first.
+
+inputs:
+  app-id:
+    description: The GitHub App id (a repository variable or secret).
+    required: true
+  private-key:
+    description: The App's private key in PEM form (a secret).
+    required: true
+  module:
+    description: Module asking for the verb; must be enabled in .github/lktec-bot.yml and allowed to run check.
+    required: true
+  repository:
+    description: Target repository as owner/name.
+    required: false
+    default: ${{ github.repository }}
+  sha:
+    description: Full id of the commit the check run is on.
+    required: false
+    default: ${{ github.sha }}
+  name:
+    description: Name of the check run (one line, up to 100 characters). With the commit and the App it identifies the run.
+    required: true
+  title:
+    description: Title of the result (one line, up to 255 characters).
+    required: true
+  summary:
+    description: Summary of the result (markdown). Use summary-file for multi-line markdown.
+    required: false
+    default: ""
+  summary-file:
+    description: Path to a file with the summary; wins over summary when both are given.
+    required: false
+    default: ""
+  text:
+    description: Details below the summary (markdown). Use text-file for multi-line markdown.
+    required: false
+    default: ""
+  text-file:
+    description: Path to a file with the details; wins over text when both are given.
+    required: false
+    default: ""
+  status:
+    description: "queued, in_progress or completed."
+    required: false
+    default: completed
+  conclusion:
+    description: "success, failure, neutral, cancelled, skipped, timed_out or action_required. Required for a completed check run, ignored for the others."
+    required: false
+    default: success
+  details-url:
+    description: https:// URL with more details. Required when the conclusion is action_required.
+    required: false
+    default: ""
+  external-id:
+    description: Your own reference for the run (up to 64 characters of letters, digits, - _ . / :).
+    required: false
+    default: ""
+  annotations-file:
+    description: "Path to a JSON file with annotations (path, start_line, end_line, annotation_level, message, optional title). At most 500; a run with annotations is always updated."
+    required: false
+    default: ""
+  api-url:
+    description: API base URL of a GitHub Enterprise Server; empty for github.com.
+    required: false
+    default: ""
+  fail-on-denied:
+    description: "Fail the step when the policy denies the verb (default: succeed with result=denied)."
+    required: false
+    default: "false"
+
+outputs:
+  result:
+    description: ok, denied or error.
+    value: ${{ steps.run.outputs.result }}
+  decision:
+    description: created, updated, unchanged, denied or error.
+    value: ${{ steps.run.outputs.decision }}
+  message:
+    description: One line saying what happened.
+    value: ${{ steps.run.outputs.message }}
+  url:
+    description: HTML URL of the check run.
+    value: ${{ steps.run.outputs.url }}
+  id:
+    description: Id of the check run.
+    value: ${{ steps.run.outputs.id }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        LKTEC_BOT_APP_ID: ${{ inputs.app-id }}
+        LKTEC_BOT_PRIVATE_KEY: ${{ inputs.private-key }}
+        LKTEC_BOT_API_URL: ${{ inputs.api-url }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_MODULE: ${{ inputs.module }}
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_NAME: ${{ inputs.name }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+        INPUT_SUMMARY_FILE: ${{ inputs.summary-file }}
+        INPUT_TEXT: ${{ inputs.text }}
+        INPUT_TEXT_FILE: ${{ inputs.text-file }}
+        INPUT_STATUS: ${{ inputs.status }}
+        INPUT_CONCLUSION: ${{ inputs.conclusion }}
+        INPUT_DETAILS_URL: ${{ inputs.details-url }}
+        INPUT_EXTERNAL_ID: ${{ inputs.external-id }}
+        INPUT_ANNOTATIONS_FILE: ${{ inputs.annotations-file }}
+        INPUT_FAIL_ON_DENIED: ${{ inputs.fail-on-denied }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/../lib/run.sh" check

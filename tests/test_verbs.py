@@ -46,6 +46,7 @@ def test_the_phase_one_verbs_ship_in_this_release() -> None:
         Verb.COMMIT,
         Verb.RELEASE,
         Verb.OPEN_PR,
+        Verb.CHECK,
     }
 
 
@@ -79,6 +80,18 @@ def test_every_shipped_verb_declares_its_options() -> None:
         "body",
         "draft",
     ]
+    assert [option.name for option in registry[Verb.CHECK].options] == [
+        "sha",
+        "name",
+        "title",
+        "summary",
+        "text",
+        "status",
+        "conclusion",
+        "details_url",
+        "external_id",
+        "annotations_file",
+    ]
     assert registry[Verb.COMMENT].takes_target
     assert not registry[Verb.APPROVE].takes_target
 
@@ -103,7 +116,7 @@ def test_register_refuses_duplicate_option_names(monkeypatch: pytest.MonkeyPatch
     options = (Option("number", "x"), Option("number", "y"))
 
     with pytest.raises(ValueError, match="declares an option twice"):
-        register(Verb.CHECK, grants=permissions_for(Verb.CHECK), options=options)(handler)
+        register(Verb.DEPLOYMENT, grants=permissions_for(Verb.DEPLOYMENT), options=options)(handler)
 
 
 def test_every_registered_verb_has_one_handler_whose_grants_match_the_table() -> None:
@@ -138,8 +151,10 @@ def test_register_refuses_duplicates() -> None:
 
 def test_register_refuses_grants_that_differ_from_the_table() -> None:
     with pytest.raises(ValueError, match="declares grants pull_requests:write but the table"):
-        register(Verb.CHECK, grants=frozenset({Grant(Permission.PULL_REQUESTS, "write")}))(handler)
-    assert Verb.CHECK not in REGISTRY
+        register(Verb.DEPLOYMENT, grants=frozenset({Grant(Permission.PULL_REQUESTS, "write")}))(
+            handler
+        )
+    assert Verb.DEPLOYMENT not in REGISTRY
 
 
 def test_register_checks_per_target_grants_for_comment(monkeypatch: pytest.MonkeyPatch) -> None:

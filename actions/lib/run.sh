@@ -57,6 +57,31 @@ case "$verb" in
     if [ "${INPUT_LATEST:-true}" = "true" ]; then args+=(--latest); else args+=(--no-latest); fi
     if [ "${INPUT_PRERELEASE:-false}" = "true" ]; then args+=(--prerelease); fi
     ;;
+  check)
+    args+=(
+      --sha "${INPUT_SHA:?sha input is required}"
+      --name "${INPUT_NAME:?name input is required}"
+      --title "${INPUT_TITLE:?title input is required}"
+      --status "${INPUT_STATUS:-completed}"
+    )
+    if [ -n "${INPUT_SUMMARY_FILE:-}" ]; then
+      args+=(--summary-file "$INPUT_SUMMARY_FILE")
+    else
+      args+=(--summary "${INPUT_SUMMARY:-}")
+    fi
+    if [ -n "${INPUT_TEXT_FILE:-}" ]; then
+      args+=(--text-file "$INPUT_TEXT_FILE")
+    elif [ -n "${INPUT_TEXT:-}" ]; then
+      args+=(--text "$INPUT_TEXT")
+    fi
+    # The conclusion only belongs to a completed check run; the input defaults to success.
+    if [ "${INPUT_STATUS:-completed}" = "completed" ]; then
+      args+=(--conclusion "${INPUT_CONCLUSION:-success}")
+    fi
+    [ -n "${INPUT_DETAILS_URL:-}" ] && args+=(--details-url "$INPUT_DETAILS_URL")
+    [ -n "${INPUT_EXTERNAL_ID:-}" ] && args+=(--external-id "$INPUT_EXTERNAL_ID")
+    [ -n "${INPUT_ANNOTATIONS_FILE:-}" ] && args+=(--annotations-file "$INPUT_ANNOTATIONS_FILE")
+    ;;
   open-pr)
     args+=(
       --head "${INPUT_HEAD:?head input is required}"
