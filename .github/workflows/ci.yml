@@ -58,7 +58,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy src tests
+      - run: uv run mypy src tests tools
       - name: Workflow and action YAML parse strictly
         run: uv run python tools/check_yaml.py .github/workflows actions templates .github/lktec-bot.yml
       - name: Every source file carries the SPDX copyright and license header

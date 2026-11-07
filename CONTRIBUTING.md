@@ -15,7 +15,9 @@ The maintainer aims to answer new issues and pull requests within 14 days.
 3. Open a pull request against `main`.
 4. `main` is protected: a PR merges only after `lint` and `test` are green, the branch is up to
    date with `main`, and a code owner has approved. Nobody pushes to `main` directly, not even
-   the maintainer. Commits must be signed.
+   the maintainer. Commits on `main` carry verified signatures: sign yours if you can (SSH or GPG);
+   an unsigned commit from a fork is squash-merged by the maintainer with a recorded bypass after
+   the review, so a missing signature does not block a contribution.
 
 ## What a pull request needs
 
@@ -55,7 +57,7 @@ The required check `lint` runs ruff, ruff format, mypy, the YAML check and the h
 
 ## Developer Certificate of Origin
 
-By contributing you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/): you wrote the change, or otherwise have the right to submit it under the project's licence (Apache-2.0). Sign off every commit with `git commit -s`, which adds a `Signed-off-by: Your Name <email>` line. Dependency and bot pull requests are exempt. No check enforces the sign-off today; commits must additionally be cryptographically signed (see above).
+By contributing you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/): you wrote the change, or otherwise have the right to submit it under the project's licence (Apache-2.0). Sign off every commit with `git commit -s`, which adds a `Signed-off-by: Your Name <email>` line. Dependency and bot pull requests are exempt. No check enforces the sign-off today. Cryptographic signatures are welcome but not required from a fork (see above).
 
 ## Local setup
 
