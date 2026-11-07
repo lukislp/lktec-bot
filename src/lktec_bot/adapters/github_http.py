@@ -22,6 +22,7 @@ from lktec_bot.ports.github_api import (
     CommitInfo,
     Comparison,
     CreatedCommit,
+    Issue,
     IssueComment,
     MergeMethod,
     PullRequest,
@@ -533,6 +534,46 @@ class HttpGitHubApi:
         )
         return str(response.json()["html_url"])
 
+    def list_issues(
+        self, owner: str, repo: str, *, creator: str, state: str = "all"
+    ) -> list[Issue]:
+        entries = self._paginate(
+            f"/repos/{owner}/{repo}/issues", {"creator": creator, "state": state}
+        )
+        # The issues endpoint lists pull requests too; they carry a ``pull_request`` key.
+        return [_issue(entry) for entry in entries if "pull_request" not in entry]
+
+    def create_issue(
+        self, owner: str, repo: str, *, title: str, body: str, labels: Sequence[str]
+    ) -> Issue:
+        response = self._request(
+            "POST",
+            f"/repos/{owner}/{repo}/issues",
+            json={"title": title, "body": body, "labels": list(labels)},
+        )
+        return _issue(response.json())
+
+    def update_issue(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        state: str | None = None,
+        labels: Sequence[str] | None = None,
+    ) -> Issue:
+        changes: dict[str, Any] = {
+            key: value
+            for key, value in (("title", title), ("body", body), ("state", state))
+            if value is not None
+        }
+        if labels is not None:
+            changes["labels"] = list(labels)
+        response = self._request("PATCH", f"/repos/{owner}/{repo}/issues/{number}", json=changes)
+        return _issue(response.json())
+
     def graphql(self, query: str, variables: Mapping[str, Any] | None = None) -> dict[str, Any]:
         response = self._request(
             "POST", "/graphql", json={"query": query, "variables": dict(variables or {})}
@@ -760,6 +801,19 @@ def _pull_request(payload: object, number: int) -> PullRequest:
         body=str(payload.get("body") or ""),
         author_login=_login(payload),
         merge_state=str(payload.get("mergeable_state") or "").upper(),
+    )
+
+
+def _issue(entry: Mapping[str, Any]) -> Issue:
+    labels = entry.get("labels") or []
+    return Issue(
+        number=int(entry["number"]),
+        title=str(entry.get("title") or ""),
+        body=str(entry.get("body") or ""),
+        state=str(entry.get("state", "")),
+        html_url=str(entry.get("html_url", "")),
+        labels=tuple(str(label.get("name", "")) for label in labels if isinstance(label, dict)),
+        author_login=_login(entry),
     )
 
 

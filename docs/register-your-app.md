@@ -21,13 +21,13 @@ with exactly the permissions the bot needs and nothing else:
 | `default_permissions.pull_requests`     | `write`                                 | `comment`, `approve`, `enable-automerge`, `update-branch`, `open-pr`. |
 | `default_permissions.metadata`          | `read`                                  | Always included by GitHub.                                     |
 | `default_permissions.checks`            | `write`                                 | `check`. Not in `manifest.json` yet: add it on the App's settings page and accept it on every installation before running the verb. |
+| `issues` (add on the settings page) | `write`                       | `open-issue`, and `comment` on an issue (`--target issue`). The manifest does not ask for it; add it when you use either, and accept it on the installation. |
 | `request_oauth_on_install`              | `false`                                 | The bot has no user flow.                                      |
 | `redirect_url`                          | `http://localhost/`                     | Where GitHub sends the one-time code (see below).              |
 | no `hook_attributes`, no `default_events` | -                                     | The bot runs from workflows; it receives no events and has no webhook. |
 
 **Never grant `workflows`**: the bot never requests it and has no use for it (see
-[architecture.md](architecture.md)). Permissions for verbs that do not ship yet (`issues: write`,
-`deployments: write`) can be added on the App's settings page later.
+[architecture.md](architecture.md)). Permissions for verbs that do not ship yet (`deployments: write`) can be added on the App's settings page later.
 
 ### The flow
 

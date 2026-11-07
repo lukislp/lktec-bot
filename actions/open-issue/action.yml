@@ -1,0 +1,88 @@
+name: lktec-bot open-issue
+description: >-
+  Open an issue as the App, or, with a marker, update the issue the bot opened with that marker
+  instead of opening another (a closed one is reopened). Requires the setup action first.
+
+inputs:
+  app-id:
+    description: The GitHub App id (a repository variable or secret).
+    required: true
+  private-key:
+    description: The App's private key in PEM form (a secret).
+    required: true
+  module:
+    description: Module asking for the verb; must be enabled in .github/lktec-bot.yml and allowed to run open-issue.
+    required: true
+  repository:
+    description: Target repository as owner/name.
+    required: false
+    default: ${{ github.repository }}
+  title:
+    description: Issue title (one line, up to 256 characters).
+    required: true
+  body:
+    description: Issue text. Use body-file for multi-line markdown.
+    required: false
+    default: ""
+  body-file:
+    description: Path to a file with the issue text; wins over body when both are given.
+    required: false
+    default: ""
+  marker:
+    description: Identifier of an issue the bot owns; later runs update that issue instead of opening another.
+    required: false
+    default: ""
+  labels:
+    description: Comma-separated labels; each must already exist in the repository. Labels are only ever added to an existing issue.
+    required: false
+    default: ""
+  reopen:
+    description: "With a marker: reopen the bot's closed issue (true, default) or open a new one (false)."
+    required: false
+    default: "true"
+  api-url:
+    description: API base URL of a GitHub Enterprise Server; empty for github.com.
+    required: false
+    default: ""
+  fail-on-denied:
+    description: "Fail the step when the policy denies the verb (default: succeed with result=denied)."
+    required: false
+    default: "false"
+
+outputs:
+  result:
+    description: ok, denied or error.
+    value: ${{ steps.run.outputs.result }}
+  decision:
+    description: opened, updated, reopened, unchanged, denied or error.
+    value: ${{ steps.run.outputs.decision }}
+  message:
+    description: One line saying what happened.
+    value: ${{ steps.run.outputs.message }}
+  url:
+    description: HTML URL of the issue.
+    value: ${{ steps.run.outputs.url }}
+  number:
+    description: Number of the issue.
+    value: ${{ steps.run.outputs.number }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        LKTEC_BOT_APP_ID: ${{ inputs.app-id }}
+        LKTEC_BOT_PRIVATE_KEY: ${{ inputs.private-key }}
+        LKTEC_BOT_API_URL: ${{ inputs.api-url }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_MODULE: ${{ inputs.module }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_BODY: ${{ inputs.body }}
+        INPUT_BODY_FILE: ${{ inputs.body-file }}
+        INPUT_MARKER: ${{ inputs.marker }}
+        INPUT_LABELS: ${{ inputs.labels }}
+        INPUT_REOPEN: ${{ inputs.reopen }}
+        INPUT_FAIL_ON_DENIED: ${{ inputs.fail-on-denied }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/../lib/run.sh" open-issue

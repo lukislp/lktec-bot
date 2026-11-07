@@ -95,6 +95,22 @@ case "$verb" in
     fi
     if [ "${INPUT_DRAFT:-false}" = "true" ]; then args+=(--draft); fi
     ;;
+  open-issue)
+    args+=(--title "${INPUT_TITLE:?title input is required}")
+    if [ -n "${INPUT_BODY_FILE:-}" ]; then
+      args+=(--body-file "$INPUT_BODY_FILE")
+    else
+      args+=(--body "${INPUT_BODY:-}")
+    fi
+    [ -n "${INPUT_MARKER:-}" ] && args+=(--marker "$INPUT_MARKER")
+    IFS=',' read -r -a labels <<<"${INPUT_LABELS:-}"
+    for label in "${labels[@]+"${labels[@]}"}"; do
+      label="${label#"${label%%[![:space:]]*}"}"
+      label="${label%"${label##*[![:space:]]}"}"
+      [ -n "$label" ] && args+=(--label "$label")
+    done
+    if [ "${INPUT_REOPEN:-true}" = "true" ]; then args+=(--reopen); else args+=(--no-reopen); fi
+    ;;
   *)
     echo "::error::unknown verb '$verb'"
     exit 2

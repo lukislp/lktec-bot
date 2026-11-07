@@ -81,6 +81,19 @@ class IssueComment:
 
 
 @dataclass(frozen=True, slots=True)
+class Issue:
+    """One issue (never a pull request) with what ``open-issue`` needs to decide on."""
+
+    number: int
+    title: str
+    body: str
+    state: str  # "open" or "closed"
+    html_url: str
+    labels: tuple[str, ...]
+    author_login: str
+
+
+@dataclass(frozen=True, slots=True)
 class CreatedCommit:
     """The commit ``create_commit_on_branch`` made."""
 
@@ -348,6 +361,35 @@ class GitHubApi(Protocol):
 
     def update_issue_comment(self, owner: str, repo: str, comment_id: int, body: str) -> str:
         """Replace the body of an existing comment and return its HTML URL."""
+        ...
+
+    def list_issues(
+        self, owner: str, repo: str, *, creator: str, state: str = "all"
+    ) -> Sequence[Issue]:
+        """Every issue opened by ``creator`` in ``state`` (``open``, ``closed``, ``all``).
+
+        Pull requests, which the issues endpoint also returns, are left out.
+        """
+        ...
+
+    def create_issue(
+        self, owner: str, repo: str, *, title: str, body: str, labels: Sequence[str]
+    ) -> Issue:
+        """Open an issue."""
+        ...
+
+    def update_issue(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        state: str | None = None,
+        labels: Sequence[str] | None = None,
+    ) -> Issue:
+        """Change the given fields of an issue (``None`` leaves one alone); ``labels`` replaces."""
         ...
 
     def graphql(self, query: str, variables: Mapping[str, Any] | None = None) -> dict[str, Any]:
