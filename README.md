@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/lukislp/lktec-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/lukislp/lktec-bot/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lukislp/lktec-bot/badge)](https://scorecard.dev/viewer/?uri=github.com/lukislp/lktec-bot)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16420/badge)](https://www.bestpractices.dev/projects/16420)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 
@@ -189,3 +190,4 @@ Apache-2.0, see [LICENSE](LICENSE).
 - [docs/releases.md](docs/releases.md): signed release assets and reproducible builds.
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lukislp/lktec-bot/badge)](https://scorecard.dev/viewer/?uri=github.com/lukislp/lktec-bot)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16420/badge)](https://www.bestpractices.dev/projects/16420)
