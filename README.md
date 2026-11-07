@@ -3,8 +3,11 @@
 [![CI](https://github.com/lukislp/lktec-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/lukislp/lktec-bot/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lukislp/lktec-bot/badge)](https://scorecard.dev/viewer/?uri=github.com/lukislp/lktec-bot)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16420/badge)](https://www.bestpractices.dev/projects/16420)
+[![CodeQL](https://github.com/lukislp/lktec-bot/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/lukislp/lktec-bot/security/code-scanning)
+[![Release](https://img.shields.io/github/v/release/lukislp/lktec-bot)](https://github.com/lukislp/lktec-bot/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
+[![Built on GitHub Apps](https://img.shields.io/badge/built%20on-GitHub%20Apps-181717?logo=github)](https://docs.github.com/en/apps)
 
 GitHub App bot core: a small set of least-privilege verbs (comment, approve, enable auto-merge,
 update branch, later commits, releases, checks, issues and deployments) that run under a GitHub
