@@ -13,13 +13,14 @@ welcome as [issues](https://github.com/lukislp/lktec-bot/issues).
 | 1 | The first verbs and composite actions (`comment`, `approve`, `enable-automerge`, `update-branch`) and the `automerge` module that replaces a personal-access-token workflow | done |
 | 2 | `commit`, `release` and `open-pr`; the `lockfiles`, `release` and `sync` modules, so lock files, releases and deploy bumps no longer need a personal token, a deploy key or a signing key | done |
 | 3 | Releases of this repository itself (dogfooding), reusable workflows and caller templates, the first pilot repositories | done |
-| 4 | **Use it for your own repositories**: setting the App up from a manifest, documentation and templates a stranger can follow, signed release assets, the best-practices badge | in progress |
+| 4 | **Use it for your own repositories**: setting the App up from a manifest, documentation and templates a stranger can follow, signed release assets, the best-practices badge | done |
 
 ## Next twelve months
 
-- **Phase 4 (now).** Make adoption by another owner straightforward: App registration from a
-  manifest, one setup guide, caller templates for every module, and release assets that can be
-  verified ([docs/releases.md](releases.md)).
+- **Phase 4 is done** (2026-11-07): App registration from a manifest
+  ([docs/register-your-app.md](register-your-app.md)), caller templates for every module, signed
+  release assets ([docs/releases.md](releases.md)) and the OpenSSF Best Practices silver badge.
+  What is left of it is maintenance: keep the guides in step with the modules.
 - **Release mode `pr`**: a reviewed release pull request with changelog and version files, for
   repositories that do not want a tag straight from `main` ([release module](modules/release.md)).
 - **More verbs where a module needs them**, each with exactly one App permission and an entry in
