@@ -59,7 +59,7 @@ The handover directory is `manifest.txt` (one repository path per line) plus
    lists the files. Decision `committed` with the commit URL.
 
 It writes `result` (`ok`, `denied`, `error`), `decision` (`committed`, `unchanged`, `skipped`,
-`denied`, `error`), `reason` and `url` to `$GITHUB_OUTPUT`, and a line to the job summary. `--version`
+`denied`, `error`), `reason`, `url` and `check-url` to `$GITHUB_OUTPUT`, and a line to the job summary. `--version`
 may only hold letters, digits and `. _ + -`.
 
 ### `deploy-bump.yml`
@@ -68,7 +68,7 @@ Inputs: `version` (required), `images` (required, an extended regular expression
 repositories without the tag, for example `ghcr\.io/<owner>/(<image>)`), `paths`
 (space-separated directories, default `k8s deploy`), `exclude` (a `grep -E` pattern of paths to
 leave alone, default `/flux/`), `branch` (default `main`), `bot-repository`. Secrets: `app-id`,
-`private-key`. Outputs: `decision`, `url`.
+`private-key`. Outputs: `decision`, `url`, `check-url`.
 
 - `bump` checks out the branch, and for every tracked `*.yaml` / `*.yml` under `paths` that
   mentions one of the images and does not match `exclude` runs
@@ -159,8 +159,45 @@ effect once merged.
 | `paths`          | list of repository paths, **required, non-empty**                    | Only files under these directories (or exactly these files) may be committed. A path under `.github/workflows/` is rejected when the policy is validated. |
 | `branch`         | branch name; default `main`                                          | The branch the commit goes onto. `--branch` must equal it. |
 | `commit-message` | one line, at most 200 characters; default `chore(deploy): image {version} [skip ci]` | The headline. `{version}` is replaced by `--version` (empty when not given). |
+| `check`          | `true` / `false`; default `false`                                    | Publish a check run on the commit named by `--base-sha` after the run (see [Check run](#check-run)). |
+| `check-name`     | one line, 1 to 100 characters; default `lktec-bot / deploy bump`     | The name of that check run. |
 
-Verbs of the module: `commit` only.
+Verbs of the module: `commit`, plus `check` for the option above.
+
+## Check run
+
+A deploy bump otherwise ends in a job summary nobody opens. With `check: true` in the policy the
+module also publishes a check run of the App, through the `check` verb (`checks: write`), on the
+commit named by `--base-sha` (in `deploy-bump.yml` the checked-out release commit), so the
+result shows in that commit's checks list:
+
+```yaml
+modules:
+  sync:
+    enabled: true
+    paths: [k8s]
+    check: true
+    # check-name: "lktec-bot / deploy bump"
+```
+
+| Outcome | Check run |
+| ------- | --------- |
+| `committed` | `success`, title `deploy bump: <version> committed`; the summary lists the branch, the version, one bullet per committed file and a link to the commit (also the run's details URL). |
+| `unchanged` | `neutral`, title `deploy bump: nothing to change for <version>`; the summary says the files already matched the branch. |
+| `error` after the policy was read | `failure`, title `deploy bump failed`; the summary is the error message. |
+
+`denied` and `skipped` publish nothing (the policy said no, or the next run starts over), and
+neither does an error before the policy was read, because there is no option to consult yet. The
+check never changes the decision or the exit code: when it cannot be published (or there is no
+`--base-sha` to attach it to) the run only gets a warning. `check` is an upsert keyed on commit
+and name, so a rerun for the same commit updates the run instead of adding a second one; its
+`external_id` is `deploy-bump:<version>` (`deploy-bump` without a version, or when the version
+has a `+` or is longer than 52 characters). The run's URL is the output `check-url` (empty when
+none was published), passed through by both workflows, and a line `Check run: <url>` in the job
+summary.
+
+The App needs `checks: write`; it is in the manifest since #37 and existing installations
+accepted it.
 
 ## Permissions
 

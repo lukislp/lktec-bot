@@ -565,11 +565,14 @@ def sync_commit(
             "reason": outcome.reason,
             "message": outcome.reason,
             "url": outcome.url,
+            "check-url": outcome.check_url,
         }
     )
     say(_with_budget(f"{outcome.decision.value}: {outcome.reason}", gate))
     if outcome.url:
         say(f"url: {outcome.url}")
+    if outcome.check_url:
+        say(f"check run: {outcome.check_url}")
     for warning in outcome.warnings:
         say(f"warning: {warning}", err=True)
     if outcome.exit_code:

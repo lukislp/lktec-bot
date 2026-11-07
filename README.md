@@ -52,7 +52,7 @@ modules:
 ```
 
 Each module may only run the verbs registered for it (`automerge`: approve, enable-automerge,
-update-branch, comment; `lockfiles`: commit, comment; `release`: release; `sync`: commit; `ping`: ping), and only the options it declares; anything else makes
+update-branch, comment; `lockfiles`: commit, comment; `release`: release; `sync`: commit, open-issue, check; `ping`: ping), and only the options it declares; anything else makes
 the file invalid and denies every verb.
 
 To run a verb against a real repository, register an App ([docs/register-your-app.md](docs/register-your-app.md)),
@@ -146,7 +146,8 @@ branch head and commits the ones that differ with the `commit` verb. Because the
 the protected branch without a pull request, the App must be a bypass actor (actor type
 Integration, mode always) of the branch ruleset. That is acceptable because GitHub signs the
 commit, the token is narrowed to one repository, the verb refuses `.github/workflows/`, and the
-module refuses any file outside the `paths` of the policy. Reusable workflows
+module refuses any file outside the `paths` of the policy. It can optionally report the bump as a
+check run on the release commit (policy option `check`, off by default). Reusable workflows
 ([`.github/workflows/deploy-bump.yml`](.github/workflows/deploy-bump.yml) and
 [`.github/workflows/sync.yml`](.github/workflows/sync.yml)) and caller template
 ([`templates/deploy-bump.yml`](templates/deploy-bump.yml)). The deploy bump can carry extra files, such as a coverage badge, into the same commit (input `handover-artifact`).

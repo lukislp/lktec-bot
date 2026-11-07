@@ -68,6 +68,38 @@ def test_sync_commit_commits_and_reports(state: FakeRepository, tmp_path: Path) 
     assert state.commits[0][1] == "chore(deploy): image 2.0.0 [skip ci]"
 
 
+def test_sync_commit_check_url_output_is_empty_without_a_check(
+    state: FakeRepository, tmp_path: Path
+) -> None:
+    handed = handover(tmp_path / "handover", {"k8s/web.yaml": b"image: x:2\n"})
+
+    result = run_commit(handed, "--base-sha", "b" * 40)
+
+    assert result.exit_code == 0, result.output
+    assert outputs(tmp_path)["check-url"] == ""
+    assert "check run:" not in result.stdout
+    assert state.check_calls == []
+
+
+def test_sync_commit_reports_the_check_url(
+    monkeypatch: pytest.MonkeyPatch, state: FakeRepository, tmp_path: Path
+) -> None:
+    factory = FakeApiFactory({POLICY_PATH: POLICY + "    check: true\n"}, state)
+    monkeypatch.setattr(
+        "lktec_bot.cli.build_gate", lambda env=None: Gate(FakeTokenProvider(), factory, handlers())
+    )
+    handed = handover(tmp_path / "handover", {"k8s/web.yaml": b"image: x:2\n"})
+
+    result = run_commit(handed, "--version", "2.0.0", "--base-sha", HEAD)
+
+    assert result.exit_code == 0, result.output
+    url = "https://github.com/acme/widgets/runs/1"
+    assert outputs(tmp_path)["check-url"] == url
+    assert f"check run: {url}" in result.stdout
+    assert f"Check run: <{url}>" in (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert state.check_calls[0][2]["conclusion"] == "success"
+
+
 def test_sync_commit_without_changes_is_ok(state: FakeRepository, tmp_path: Path) -> None:
     handed = handover(tmp_path / "handover", {"k8s/web.yaml": b"image: x:1\n"})
 

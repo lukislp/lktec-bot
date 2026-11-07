@@ -15,6 +15,8 @@ from lktec_bot.domain.paths import repo_path_problem
 DEFAULT_BRANCH = "main"
 DEFAULT_COMMIT_MESSAGE = "chore(deploy): image {version} [skip ci]"
 MAX_HEADLINE = 200
+DEFAULT_CHECK_NAME = "lktec-bot / deploy bump"
+MAX_CHECK_NAME = 100
 _BRANCH = re.compile(r"^[A-Za-z0-9._/-]+\Z")
 
 
@@ -29,6 +31,13 @@ class SyncOptions(BaseModel):
     ``commit-message``
         The commit headline, one line. ``{version}`` is replaced by the ``--version`` argument
         (an empty string when it is not given).
+    ``check``
+        Default ``false``. When ``true``, the run is reported as a check run on the commit
+        named by ``--base-sha`` (committed, unchanged, or an error after the policy was read;
+        a denied or skipped run publishes nothing). Needs the App's ``checks: write``.
+    ``check-name``
+        The name of that check run (default ``lktec-bot / deploy bump``), one line of 1 to
+        100 characters.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -36,6 +45,8 @@ class SyncOptions(BaseModel):
     paths: list[str] = Field(min_length=1)
     branch: str = DEFAULT_BRANCH
     commit_message: str = Field(default=DEFAULT_COMMIT_MESSAGE, alias="commit-message")
+    check: bool = False
+    check_name: str = Field(default=DEFAULT_CHECK_NAME, alias="check-name")
 
     @field_validator("paths")
     @classmethod
@@ -63,6 +74,16 @@ class SyncOptions(BaseModel):
         if len(value) > MAX_HEADLINE:
             raise ValueError(f"must be at most {MAX_HEADLINE} characters")
         return value
+
+    @field_validator("check_name")
+    @classmethod
+    def _check_name_line(cls, value: str) -> str:
+        text = value.strip()
+        if not text or "\n" in text or "\r" in text:
+            raise ValueError("must be one non-empty line")
+        if len(text) > MAX_CHECK_NAME:
+            raise ValueError(f"must be at most {MAX_CHECK_NAME} characters")
+        return text
 
     def headline(self, version: str) -> str:
         return self.commit_message.replace("{version}", version)

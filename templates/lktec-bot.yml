@@ -38,6 +38,10 @@ modules:
     branch: main
     # One line; {version} is the release version handed to the workflow.
     commit-message: "chore(deploy): image {version} [skip ci]"
+    # Report the run as a check run on the release commit (the workflow's base-sha). Needs the
+    # App's checks: write. Off by default; check-name is optional (one line, up to 100 characters).
+    check: false
+    # check-name: "lktec-bot / deploy bump"
 
   # Tags and publishes a release from the Conventional Commits on the default branch (see
   # docs/modules/release.md). Set enabled: true once the release workflow is in place.

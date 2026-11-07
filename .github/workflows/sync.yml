@@ -55,6 +55,9 @@ on:
       url:
         description: The commit URL, when a commit was made.
         value: ${{ jobs.commit.outputs.url }}
+      check-url:
+        description: The URL of the check run, when the policy's `check` option published one.
+        value: ${{ jobs.commit.outputs.check-url }}
 
 permissions:
   contents: read
@@ -70,6 +73,7 @@ jobs:
     outputs:
       decision: ${{ steps.commit.outputs.decision }}
       url: ${{ steps.commit.outputs.url }}
+      check-url: ${{ steps.commit.outputs.check-url }}
     # One commit at a time per branch; a second run waits for the first.
     concurrency:
       group: sync-commit-${{ github.repository }}-${{ inputs.branch }}
