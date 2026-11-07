@@ -58,7 +58,12 @@ _TITLE_SINGLE = re.compile(rf"\bbumps?\s+`?(?P<name>[^\s`]+)`?\s+from\s+{_BUMP}"
 _BODY_SINGLE = re.compile(
     rf"\bBumps\s+(?:\[(?P<lname>[^\]]+)\]\([^)\s]*\)|`?(?P<name>[^\s`\[]+)`?)\s+from\s+{_BUMP}"
 )
-_BODY_UPDATES = re.compile(rf"^Updates\s+`(?P<name>[^`]+)`\s+from\s+{_BUMP}", re.MULTILINE)
+# One line per member of a group: `Updates `ruff` from ...` (pip, npm, actions) or, for NuGet,
+# `Updated [SkiaSharp](url) from ...`.
+_BODY_UPDATES = re.compile(
+    rf"^Update[sd]\s+(?:\[(?P<lname>[^\]]+)\]\([^)\s]*\)|`(?P<name>[^`]+)`)\s+from\s+{_BUMP}",
+    re.MULTILINE,
+)
 _GROUP_TITLE = re.compile(r"\bbumps?\s+the\s+\S+\s+group\b", re.IGNORECASE)
 _GROUP_COUNT = re.compile(r"\bwith\s+(\d+)\s+updates?\b", re.IGNORECASE)
 _DETAILS = re.compile(r"<details>.*?</details>", re.DOTALL | re.IGNORECASE)
@@ -131,7 +136,7 @@ def _read_dependencies(title: str, body: str) -> list[Dependency]:
     if (match := _BODY_SINGLE.search(text)) is not None:
         add(_dependency(match.group("lname") or match.group("name"), match))
     for match in _BODY_UPDATES.finditer(text):
-        add(_dependency(match.group("name"), match))
+        add(_dependency(match.group("lname") or match.group("name"), match))
     return list(found.values())
 
 

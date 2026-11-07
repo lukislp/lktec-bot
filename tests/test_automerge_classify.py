@@ -371,3 +371,31 @@ def test_unreadable_pull_request_without_a_problem_text_still_has_a_reason() -> 
 )
 def test_touches_workflow_files(paths: list[str], touched: bool) -> None:
     assert touches_workflow_files(paths) is touched
+
+
+# -- NuGet groups: Dependabot writes "Updated [Name](url) from a to b." per member ---------------
+
+NUGET_GROUP_TITLE = "Bump the skiasharp group with 2 updates"
+NUGET_GROUP_BODY = (
+    "Updated [SkiaSharp](https://go.microsoft.com/fwlink/?linkid=868515) from 4.154.0 to 4.155.0.\n"
+    "\n"
+    "Updated [SkiaSharp.NativeAssets.Linux](https://go.microsoft.com/fwlink/?linkid=868515) "
+    "from 4.154.0 to 4.155.0.\n"
+    "\n"
+    "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself.\n"
+)
+
+
+def test_nuget_group_body_with_links_is_read() -> None:
+    result = classify(NUGET_GROUP_TITLE, NUGET_GROUP_BODY)
+
+    assert result.grouped is True
+    assert result.kind is MINOR
+    assert result.names == ("SkiaSharp", "SkiaSharp.NativeAssets.Linux")
+    assert all(d.old == "4.154.0" and d.new == "4.155.0" for d in result.dependencies)
+
+
+def test_nuget_group_with_a_major_member_is_a_major() -> None:
+    body = NUGET_GROUP_BODY.replace("to 4.155.0.\n\nDependabot", "to 5.0.0.\n\nDependabot")
+
+    assert classify(NUGET_GROUP_TITLE, body).kind is MAJOR
