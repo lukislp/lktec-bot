@@ -19,12 +19,38 @@ The maintainer aims to answer new issues and pull requests within 14 days.
    an unsigned commit from a fork is squash-merged by the maintainer with a recorded bypass after
    the review, so a missing signature does not block a contribution.
 
+## Your first pull request
+
+1. **Fork and clone:** Fork the repository, clone your fork and create a feature branch.
+2. **Set up:** Install Python 3.13+ and [uv](https://docs.astral.sh/uv/), then run `uv sync`.
+3. **Check the baseline:** Run `uv run pytest` before making changes.
+4. **Make your change:** Follow the [architecture](docs/architecture.md) and [coding style](#coding-style) guidelines.
+5. **Run the checks:**
+
+   ```sh
+   uv run ruff check . && uv run ruff format --check .
+   uv run mypy src tests tools
+   uv run pytest
+   ```
+
+6. **Commit:** Use a Conventional Commit message and sign off:
+
+   ```sh
+   git commit -s -m "docs: describe your change"
+   ```
+
+   Cryptographic signing with `-S` is welcome if configured, but is not required from a fork. See [Developer Certificate of Origin](#developer-certificate-of-origin).
+
+7. **Open a pull request** against `main` and link the related issue.
+8. **Required checks:** `lint` and `test` must pass, the branch must be up to date, and a code owner must approve. See [What a pull request needs](#what-a-pull-request-needs).
+9. **Review:** The maintainer aims to respond to new pull requests within 14 days.
+
 ## What a pull request needs
 
 - **Conventional Commits.** Commit and pull-request titles follow Conventional Commits
   (`feat:`, `fix:`, `docs:`, `ci:`, and so on); they drive semantic versioning once releases
   are switched on. Squash-merge keeps the PR title as the commit message.
-- **Green checks.** `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src tests` and `uv run pytest` must pass; CI runs exactly these (see [Tests](#tests) and [Coding style](#coding-style)).
+- **Green checks.** `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src tests tools` and `uv run pytest` must pass; CI runs exactly these (see [Tests](#tests) and [Coding style](#coding-style)).
 - **Architecture.** Read [`docs/architecture.md`](docs/architecture.md) first. Domain code does
   no I/O, adapters implement ports, every verb goes through the gate, and a verb never asks for
   more than the permission listed in `lktec_bot/domain/permissions.py`. The `workflows`
@@ -64,7 +90,7 @@ By contributing you certify the [Developer Certificate of Origin 1.1](https://de
 ```sh
 uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run mypy src tests
+uv run mypy src tests tools
 uv run pytest
 ```
 
