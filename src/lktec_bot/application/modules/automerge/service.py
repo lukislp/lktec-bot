@@ -32,8 +32,20 @@ from lktec_bot.text import escape_markdown
 
 MODULE = "automerge"
 READ_PERMISSIONS = {"pull_requests": "read"}
-RECREATE_BODY = "@dependabot recreate"
+# Dependabot takes commands only from people with push access: a comment by a GitHub App
+# gets "Sorry, only users with push access can use that command." So the sweep cannot ask
+# for a rebuild itself; it leaves one hint per head that tells a maintainer what to do.
 RECREATE_MARKER = "automerge-recreate"
+RECREATE_HINT = (
+    "lktec-bot cannot rebuild this pull request: {why}. Dependabot takes commands only from "
+    "people with push access, so a maintainer needs to comment `@dependabot recreate`; the "
+    "sweep arms the rebuilt pull request again."
+)
+WHY_CONFLICT = "it conflicts with its base"
+WHY_UNSIGNED = (
+    "it has a commit GitHub does not verify ({reason}), which a ruleset that requires signed "
+    "commits will not merge"
+)
 # GitHub computes ``mergeable_state`` lazily after a push; UNKNOWN is polled for a while.
 UNKNOWN = "UNKNOWN"
 BEHIND = "BEHIND"
@@ -115,7 +127,7 @@ class SweepResult:
             f"### automerge sweep on `{repository}`",
             "",
             f"armed {self.armed}, re-approved {self.approved}, updated {self.updated}, "
-            f"recreate requested {self.recreated}, errors {self.errors}",
+            f"recreate needed {self.recreated}, errors {self.errors}",
             "",
         ]
         if self.rows:
@@ -343,7 +355,8 @@ class Automerge:
                 row,
                 warnings,
                 counts,
-                f"has an unsigned commit ({entry.unsigned}), asked Dependabot to recreate",
+                f"has an unsigned commit ({entry.unsigned}), a maintainer needs to recreate it",
+                WHY_UNSIGNED.format(reason=entry.unsigned),
             )
             return row
 
@@ -407,10 +420,11 @@ class Automerge:
         row: Row,
         warnings: list[str],
         counts: dict[str, int],
-        action: str = "has conflicts, asked Dependabot to recreate",
+        action: str = "has conflicts, a maintainer needs to recreate it",
+        why: str = WHY_CONFLICT,
     ) -> None:
-        # One marker per head: the comment is posted once for a head, and again when Dependabot
-        # or someone pushed a new one and it is still conflicting.
+        # One marker per head: the hint is posted once for a head, and again when Dependabot or
+        # someone pushed a new one and it still needs a rebuild.
         marker = f"{RECREATE_MARKER}-{pull_request.head_sha[:12]}"
         result = self._gate.run(
             VerbRequest(
@@ -419,7 +433,11 @@ class Automerge:
                 MODULE,
                 Verb.COMMENT,
                 target=Target.PULL_REQUEST,
-                args={"number": pull_request.number, "body": RECREATE_BODY, "marker": marker},
+                args={
+                    "number": pull_request.number,
+                    "body": RECREATE_HINT.format(why=why),
+                    "marker": marker,
+                },
             )
         )
         warnings.extend(result.warnings)

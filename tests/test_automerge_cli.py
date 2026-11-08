@@ -153,7 +153,7 @@ def test_sweep_prints_a_line_per_pull_request_and_writes_the_table(
         result.stdout
     )
     assert "#9 (someone, BEHIND): updated onto its base" in result.stdout
-    assert "ok: armed 1, re-approved 0, updated 1, recreate requested 0, errors 0" in result.stdout
+    assert "ok: armed 1, re-approved 0, updated 1, recreate needed 0, errors 0" in result.stdout
     assert wired.state.log == ["approve #7", "enable-automerge #7 squash", "update-branch #9"]
     values = outputs(tmp_path)
     assert (values["result"], values["armed"], values["updated"]) == ("ok", "1", "1")

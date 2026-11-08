@@ -424,17 +424,23 @@ def test_sweep_keeps_a_major_a_person_armed_mergeable_but_never_approves_it() ->
     assert result.approved == 0
 
 
-def test_sweep_asks_dependabot_to_recreate_a_conflicting_pull_request_once_per_head() -> None:
+def test_sweep_hints_at_a_recreate_for_a_conflicting_pull_request_once_per_head() -> None:
     env = setup(pr(1, auto=True, merge_state="DIRTY"))
 
     first = env.service.sweep()
     again = env.service.sweep()
 
     assert env.state.created_comments == [
-        (1, "@dependabot recreate\n\n<!-- lktec-bot:automerge-recreate-0123456789ab -->\n")
+        (
+            1,
+            "lktec-bot cannot rebuild this pull request: it conflicts with its base. "
+            "Dependabot takes commands only from people with push access, so a maintainer needs "
+            "to comment `@dependabot recreate`; the sweep arms the rebuilt pull request again.\n\n"
+            "<!-- lktec-bot:automerge-recreate-0123456789ab -->\n",
+        )
     ]
     assert first.recreated == 1
-    assert again.recreated == 1  # reported as done, but it is the same comment
+    assert again.recreated == 1  # reported again, but it is the same hint
     assert env.state.log == ["comment #1"]
 
 
@@ -442,7 +448,7 @@ UNSIGNED = [PullRequestCommit("a" * 40, False, "unsigned")]
 
 
 @pytest.mark.parametrize("auto", [True, False])
-def test_sweep_asks_dependabot_to_recreate_a_pull_request_with_an_unsigned_commit(
+def test_sweep_hints_at_a_recreate_for_a_pull_request_with_an_unsigned_commit(
     auto: bool,
 ) -> None:
     env = setup(pr(1, auto=auto, merge_state="BEHIND"))
@@ -452,13 +458,20 @@ def test_sweep_asks_dependabot_to_recreate_a_pull_request_with_an_unsigned_commi
     again = env.service.sweep()
 
     assert env.state.created_comments == [
-        (1, "@dependabot recreate\n\n<!-- lktec-bot:automerge-recreate-0123456789ab -->\n")
+        (
+            1,
+            "lktec-bot cannot rebuild this pull request: it has a commit GitHub does not verify "
+            "(unsigned), which a ruleset that requires signed commits will not merge. Dependabot "
+            "takes commands only from people with push access, so a maintainer needs to comment "
+            "`@dependabot recreate`; the sweep arms the rebuilt pull request again.\n\n"
+            "<!-- lktec-bot:automerge-recreate-0123456789ab -->\n",
+        )
     ]
     assert env.state.log == ["comment #1"]  # no arm, approve or update-branch next to it
     assert (first.armed, first.approved, first.updated, first.recreated) == (0, 0, 0, 1)
-    assert again.recreated == 1  # reported as done, but it is the same comment
+    assert again.recreated == 1  # reported again, but it is the same hint
     assert first.rows[0].actions == [
-        "has an unsigned commit (unsigned), asked Dependabot to recreate"
+        "has an unsigned commit (unsigned), a maintainer needs to recreate it"
     ]
     assert len(env.calls("list_pull_request_commits")) == 2
 
@@ -698,7 +711,7 @@ def test_sweep_markdown_has_a_table_with_one_row_per_pull_request() -> None:
     text = env.service.sweep().to_markdown("acme/widgets")
 
     assert "### automerge sweep on `acme/widgets`" in text
-    assert "armed 1, re-approved 0, updated 0, recreate requested 0, errors 0" in text
+    assert "armed 1, re-approved 0, updated 0, recreate needed 0, errors 0" in text
     assert "| #1 | dependabot\\[bot\\] | CLEAN |" in text
     assert "| #2 | dependabot\\[bot\\] | - | left for a person" in text
     assert "Warning: token not revoked" in text

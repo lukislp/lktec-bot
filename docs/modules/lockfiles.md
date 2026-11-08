@@ -166,9 +166,10 @@ The `workflows` permission is never requested.
 Dependabot rebases its own pull requests only while the branch holds nothing but its own
 commits. After the bot's commit it leaves the branch alone, so a base branch that moves on
 later makes the pull request `BEHIND` or `DIRTY`. `BEHIND` is handled by the automerge sweep's
-`update-branch`. For `DIRTY` the sweep comments `@dependabot recreate`, and Dependabot rebuilds
-the pull request from the current base (dropping the bot's commit); the lockfiles run for the
-new head then commits again. That is the same recovery the old workflow relied on, so the
+`update-branch`. For `DIRTY` the sweep leaves a hint asking a maintainer to comment
+`@dependabot recreate` (Dependabot does not take commands from a GitHub App); Dependabot then
+rebuilds the pull request from the current base (dropping the bot's commit), and the lockfiles
+run for the new head commits again. That is the same recovery the old workflow relied on, so the
 [automerge module](automerge.md) should be set up first or alongside.
 
 The bot's commit starts the workflows of the pull request (a push with an App token does,

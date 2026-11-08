@@ -10,7 +10,8 @@ name: Automerge (reusable)
 #        green, under the repository's own rules.
 # sweep: hourly and on every push to the default branch. Arms routine Dependabot pull requests
 #        that were missed, updates behind branches (auto-merge enabled, or opened by a person),
-#        and asks Dependabot to recreate a conflicting pull request.
+#        and leaves a hint for a maintainer to recreate a conflicting pull request (Dependabot
+#        takes no commands from a GitHub App).
 #
 # The pull request's code is never checked out and never executed: the only checkout is this
 # repository at the commit of this very workflow file, to install the bot from.

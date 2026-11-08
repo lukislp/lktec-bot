@@ -71,18 +71,21 @@ Looks at every open, non-draft pull request:
    it updates it. A pull request the sweep armed in this same run is **not** updated: its
    checks are not queued yet, the next tick looks at it.
 3. **Unstick.** A Dependabot pull request that has auto-merge enabled and is `DIRTY`
-   (conflicting) gets the comment `@dependabot recreate` through the verb `comment`. Dependabot
-   rebases its own branches only while they hold nothing but its commits; after an
-   `update-branch` it leaves a conflict alone, and `recreate` rebuilds the pull request from the
-   current base. The comment is an upsert with the marker `automerge-recreate-<head>`: once per
-   head commit, and again when the head changed and the pull request still conflicts.
-   The same comment answers a Dependabot pull request (armed, or eligible to be armed) with a
+   (conflicting) needs `@dependabot recreate`: Dependabot rebases its own branches only while
+   they hold nothing but its commits, so after an `update-branch` it leaves a conflict alone.
+   Dependabot takes that command only from people with push access; a GitHub App's comment is
+   answered with "Sorry, only users with push access can use that command." So the sweep
+   posts a hint through the verb `comment` that names the reason and asks a maintainer to
+   comment `@dependabot recreate`; the sweep arms the rebuilt pull request again. The hint is
+   an upsert with the marker `automerge-recreate-<head>`: once per head commit, and again when
+   the head changed and the pull request still needs a rebuild. The same hint answers a Dependabot pull request (armed, or eligible to be armed) with a
    commit GitHub does not verify (`verification.verified == false`, for example `unsigned`):
    a ruleset that requires signed commits can never merge it, and neither `update-branch` nor an
-   approval helps, but a recreated pull request carries a fresh, signed commit. The sweep reads
+   approval helps, but a recreated pull request carries a fresh, signed commit, so the hint
+   asks for a recreate there too. The sweep reads
    the commits of such a pull request (one extra call, covered by `pull_requests: read`) and
    does nothing else to it in that run. A pull request left for a person, a conflicting one
-   (already recreated above) and anyone else's pull request are never touched for this.
+   (already hinted above) and anyone else's pull request are never touched for this.
 4. **Re-approve.** An eligible Dependabot pull request that already has auto-merge enabled gets
    `approve` again, which is a no-op while the bot's approval is on the current head. A head
    that moved (a rebase, `update-branch`) needs a review of its own when the ruleset dismisses
@@ -147,7 +150,8 @@ The `workflows` permission is never requested (see `docs/architecture.md`).
   the ecosystem, as the old sweep did.
 - **Re-approval** in the sweep only for eligible pull requests; the old sweep approved every
   Dependabot pull request that had auto-merge.
-- The recreate comment is posted once per head commit (the old one repeated every hour).
+- The old sweep commented `@dependabot recreate` every hour; Dependabot ignores that from a
+  GitHub App, so this one leaves a hint for a maintainer, once per head commit.
 
 ## Setting up a repository
 
