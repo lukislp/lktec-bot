@@ -448,7 +448,7 @@ def automerge_sweep(repository: Annotated[str, REPOSITORY_OPTION]) -> None:
     else:
         message = (
             f"armed {result.armed}, re-approved {result.approved}, updated {result.updated}, "
-            f"recreate requested {result.recreated}, errors {result.errors}"
+            f"recreate needed {result.recreated}, errors {result.errors}"
         )
         write_outputs(
             {
