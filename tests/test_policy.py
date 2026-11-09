@@ -106,6 +106,21 @@ def test_structurally_broken_files(text: str, fragment: str) -> None:
     assert fragment in excinfo.value.reasons[0]
 
 
+def test_yaml_the_parser_rejects_with_value_error_is_an_invalid_policy() -> None:
+    # Found by the fuzzer: PyYAML raises ValueError (chr() out of range), not YAMLError.
+    with pytest.raises(PolicyError) as excinfo:
+        load_policy(r'"\U7fffffff"')
+
+    assert excinfo.value.reasons[0].startswith("not valid YAML: ")
+
+
+def test_yaml_nested_too_deeply_is_an_invalid_policy() -> None:
+    with pytest.raises(PolicyError) as excinfo:
+        load_policy("[" * 100_000)
+
+    assert excinfo.value.reasons[0].startswith("not valid YAML: ")
+
+
 def test_enabled_module_is_allowed_by_the_domain() -> None:
     policy = load_policy(VALID)
 
