@@ -22,12 +22,16 @@ with exactly the permissions the bot needs and nothing else:
 | `default_permissions.metadata`          | `read`                                  | Always included by GitHub.                                     |
 | `default_permissions.issues`            | `write`                                 | `open-issue`, and `comment` on an issue (`--target issue`).      |
 | `default_permissions.checks`            | `write`                                 | `check`.                                                       |
+| `default_permissions.workflows`         | `write`                                 | `update-branch` only: GitHub refuses to merge a base branch that changed `.github/workflows/*` into a pull request branch for an App without it. No other verb asks for it. |
 | `request_oauth_on_install`              | `false`                                 | The bot has no user flow.                                      |
 | `redirect_url`                          | `http://localhost/`                     | Where GitHub sends the one-time code (see below).              |
 | no `hook_attributes`, no `default_events` | -                                     | The bot runs from workflows; it receives no events and has no webhook. |
 
-**Never grant `workflows`**: the bot never requests it and has no use for it (see
-[architecture.md](architecture.md)). The permission for the one verb that does not ship yet (`deployments: write`) can be added on the App's settings page later. An App registered from an earlier manifest gets `issues` and `checks` the same way; accept them on the installation afterwards.
+`workflows: write` is requested by the `update-branch` verb alone and only so that GitHub accepts
+the merge of the base branch into a pull request branch when the base changed a workflow file
+(see [architecture.md](architecture.md#why-only-update-branch-gets-workflows)). Every other verb's
+token is minted without it. If you do not run `update-branch` (the `automerge` module uses it),
+leave `workflows` out. The permission for the one verb that does not ship yet (`deployments: write`) can be added on the App's settings page later. An App registered from an earlier manifest gets `issues`, `checks` and `workflows` the same way; accept them on the installation afterwards.
 
 ### The flow
 
@@ -94,7 +98,7 @@ Without the manifest, a pre-filled form works too (replace `name` and `url`; for
 organisation use `https://github.com/organizations/<org>/settings/apps/new?...`):
 
 ```
-https://github.com/settings/apps/new?name=my-repo-bot&url=https://github.com/you/your-repo&webhook_active=false&public=false&contents=write&pull_requests=write&issues=write&checks=write
+https://github.com/settings/apps/new?name=my-repo-bot&url=https://github.com/you/your-repo&webhook_active=false&public=false&contents=write&pull_requests=write&issues=write&checks=write&workflows=write
 ```
 
 Keep "Where can this GitHub App be installed?" at *Only on this account* and submit. Then, on

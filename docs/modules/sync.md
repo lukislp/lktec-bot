@@ -209,7 +209,8 @@ Every call goes through the gate with its own token, narrowed to one repository:
 | branch head and the files at that head     | `contents: read`  |
 | `commit`                                   | `contents: write` |
 
-The `workflows` permission is never requested.
+The `workflows` permission is never requested by this module (only `update-branch` holds it, see
+`docs/architecture.md`).
 
 ## Setting up a repository
 

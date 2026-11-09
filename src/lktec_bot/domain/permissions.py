@@ -6,8 +6,12 @@
 The installation token minted for a verb is narrowed to exactly the grants listed here. The
 table is deliberately complete for every planned verb, even though only ``ping`` ships today,
 so the permission footprint of the whole project is visible in one place and reviewed as a
-unit. The ``workflows`` permission does not appear and must never be added: it would let a
-verb change the CI definitions that gate the bot's own actions.
+unit. The ``workflows`` permission is granted to ``update-branch`` alone, because that verb
+only asks GitHub to merge the base branch (already reviewed, already on the protected branch)
+into a pull request branch; it cannot write workflow content of its own. Without the
+permission GitHub refuses that merge whenever the base changed a file under
+``.github/workflows/``. Every other verb stays without it, and it must not be added to any
+other verb: it would let that verb change the CI definitions that gate the bot's own actions.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ class Permission(StrEnum):
     ISSUES = "issues"
     CHECKS = "checks"
     DEPLOYMENTS = "deployments"
+    WORKFLOWS = "workflows"
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,9 +87,14 @@ _VERB_PERMISSIONS: Mapping[Verb, frozenset[Grant]] = {
         (Permission.CONTENTS, "write"),
         (Permission.PULL_REQUESTS, "write"),
     ),
+    # workflows:write is what GitHub demands for update-branch when the base branch changed a
+    # file under .github/workflows/ (403 "refusing to allow a GitHub App to create or update
+    # workflow ... without `workflows` permission"). The verb only merges the base into the
+    # pull request branch; no other verb gets this permission.
     Verb.UPDATE_BRANCH: _grants(
         (Permission.CONTENTS, "write"),
         (Permission.PULL_REQUESTS, "write"),
+        (Permission.WORKFLOWS, "write"),
     ),
     Verb.COMMIT: _grants((Permission.CONTENTS, "write")),
     Verb.OPEN_PR: _grants((Permission.PULL_REQUESTS, "write")),
