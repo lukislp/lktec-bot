@@ -18,6 +18,14 @@ def verb_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return sleeps
 
 
+@pytest.fixture(autouse=True)
+def policy_read_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The gate's policy-read waits, recorded instead of slept, for every test."""
+    sleeps: list[float] = []
+    monkeypatch.setattr("lktec_bot.application.gate.time.sleep", sleeps.append)
+    return sleeps
+
+
 @pytest.fixture(scope="session")
 def rsa_key_pair() -> tuple[str, str]:
     """(private PEM, public PEM) generated once per test session."""
