@@ -198,6 +198,7 @@ def test_a_rule_needs_a_condition_and_a_known_release() -> None:
         ("1.2.3+build", None),
         ("v1.2.3", None),
         ("1.2.3\n", None),
+        ("1\u0663.1.2", None),  # an Arabic-Indic digit is not an ASCII digit
         ("", None),
     ],
 )
