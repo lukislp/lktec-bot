@@ -159,7 +159,8 @@ the gate with its own token, narrowed to one repository:
 | `commit`                               | `contents: write`                 |
 | `comment`                              | `pull_requests: write`            |
 
-The `workflows` permission is never requested.
+The `workflows` permission is never requested by this module (only `update-branch` holds it, see
+`docs/architecture.md`).
 
 ## Dependabot and the new commit
 

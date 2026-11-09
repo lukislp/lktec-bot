@@ -29,7 +29,8 @@ but the owner. lktec-bot replaces them with an App that
 - is opt-in per repository through a committed policy file,
 - holds the key in one place (the core) and hands modules only results,
 - asks for exactly one permission per verb and revokes the token when the verb is done,
-- never requests the `workflows` permission and has no `merge` verb (branch protection merges).
+- requests the `workflows` permission for the `update-branch` verb alone and has no `merge` verb
+  (branch protection merges).
 
 ## Quick start
 
@@ -75,7 +76,7 @@ so far).
 
 - [docs/architecture.md](docs/architecture.md): layers, the gate's decision order, the module
   registry, the verb/permission table, how a verb is added (one file), exit codes, provider
-  selection, why there is no merge verb and why `workflows` is never requested.
+  selection, why there is no merge verb and why only `update-branch` gets `workflows`.
 - [docs/setup.md](docs/setup.md): set the bot up for your own repositories from zero, with the pitfalls.
 - [docs/register-your-app.md](docs/register-your-app.md): registering your own App from a manifest, where to
   store the key, environment variables, rotation.

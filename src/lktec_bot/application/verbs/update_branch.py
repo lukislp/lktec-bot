@@ -3,7 +3,9 @@
 
 """``update-branch``: merge the base branch into the pull request branch (the "Update branch"
 button). GitHub queues the merge commit and answers 202; a branch that already contains the
-base is reported as ``ok`` with a message, not as an error.
+base is reported as ``ok`` with a message, not as an error. The verb holds ``workflows:write``
+so that GitHub accepts the merge when the base changed a workflow file; it never writes
+workflow content itself.
 """
 
 from __future__ import annotations
@@ -18,7 +20,11 @@ from lktec_bot.ports.github_api import BranchUpdate, GitHubApi
 @register(
     Verb.UPDATE_BRANCH,
     grants=frozenset(
-        {Grant(Permission.CONTENTS, "write"), Grant(Permission.PULL_REQUESTS, "write")}
+        {
+            Grant(Permission.CONTENTS, "write"),
+            Grant(Permission.PULL_REQUESTS, "write"),
+            Grant(Permission.WORKFLOWS, "write"),
+        }
     ),
     options=(NUMBER,),
 )

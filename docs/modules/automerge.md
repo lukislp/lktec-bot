@@ -151,10 +151,12 @@ the gate with its own token, narrowed to one repository:
 | reading pull requests, files | `pull_requests: read`                    |
 | `approve`                    | `pull_requests: write`                   |
 | `enable-automerge`           | `contents: write` + `pull_requests: write` |
-| `update-branch`              | `contents: write` + `pull_requests: write` |
+| `update-branch`              | `contents: write` + `pull_requests: write` + `workflows: write` |
 | `comment` (recreate, ready)  | `pull_requests: write`                   |
 
-The `workflows` permission is never requested (see `docs/architecture.md`).
+`update-branch` is the only verb that asks for `workflows: write`: GitHub refuses the merge of the
+base branch into a pull request branch without it once the base changed a workflow file. No other
+verb of this module asks for it (see `docs/architecture.md`).
 
 ## Differences to the PAT workflow
 
