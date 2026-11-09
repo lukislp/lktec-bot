@@ -264,11 +264,15 @@ class Automerge:
         options: AutomergeOptions,
         eligibility: Eligibility,
         warnings: tuple[str, ...],
+        attempts: int | None = None,
     ) -> ArmResult:
         approve = self._verb(Verb.APPROVE, number)
         if not approve.ok:
             return _failed(number, approve, warnings, "approve")
-        enable = self._verb(Verb.ENABLE_AUTOMERGE, number, method=options.method)
+        # The arm job races the registration of the required checks and retries; the sweep sees
+        # the settled state, so one try is enough there.
+        extra: dict[str, object] = {} if attempts is None else {"attempts": attempts}
+        enable = self._verb(Verb.ENABLE_AUTOMERGE, number, method=options.method, **extra)
         if not enable.ok:
             return _failed(number, enable, (*warnings, *approve.warnings), "enable-automerge")
         if enable.outputs.get("decision") == "ready":
@@ -388,7 +392,7 @@ class Automerge:
             if not eligibility.arm:
                 row.note = f"left for a person ({eligibility.reason})"
                 return row
-            armed = self._arm_verbs(number, options, eligibility, ())
+            armed = self._arm_verbs(number, options, eligibility, (), attempts=1)
             warnings.extend(armed.warnings)
             if armed.decision is Decision.READY:
                 # Approved and mergeable now: nothing else to do to it, a person merges it.

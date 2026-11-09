@@ -47,6 +47,7 @@ sleep: Callable[[float], None] = time.sleep
     options=(
         NUMBER,
         Option("method", "How to merge once the checks are green.", kind="choice", choices=METHODS),
+        Option("attempts", f"Tries while GitHub calls it mergeable (1-{ATTEMPTS}).", kind="int"),
     ),
 )
 def enable_automerge(api: GitHubApi, request: VerbRequest) -> VerbResult:
@@ -57,6 +58,12 @@ def enable_automerge(api: GitHubApi, request: VerbRequest) -> VerbResult:
             VerbOutcome.ERROR, f"--method must be one of {', '.join(METHODS)}, not {raw_method!r}"
         )
     method = cast(MergeMethod, raw_method.upper())
+    raw_attempts = request.args.get("attempts")
+    attempts = ATTEMPTS if raw_attempts in (None, "") else int(str(raw_attempts))
+    if not 1 <= attempts <= ATTEMPTS:
+        return VerbResult(
+            VerbOutcome.ERROR, f"--attempts must be between 1 and {ATTEMPTS}, not {attempts}"
+        )
     pull_request = api.get_pull_request(request.owner, request.repo, number)
     problem = not_actionable(pull_request)
     if problem is not None:
@@ -81,12 +88,12 @@ def enable_automerge(api: GitHubApi, request: VerbRequest) -> VerbResult:
             url=pull_request.html_url,
         )
     refused = ""
-    for attempt in range(ATTEMPTS):
+    for attempt in range(attempts):
         try:
             url = api.enable_auto_merge(request.owner, request.repo, number, method)
         except AutoMergeNotNeeded as exc:
             refused = exc.state
-            if attempt + 1 < ATTEMPTS:
+            if attempt + 1 < attempts:
                 sleep(INTERVAL)
             continue
         return VerbResult(

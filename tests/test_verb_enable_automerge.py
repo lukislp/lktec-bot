@@ -73,6 +73,25 @@ def test_enable_automerge_gives_up_after_six_refusals_without_an_error(
     assert state.auto_merge == []
 
 
+def test_enable_automerge_tries_only_as_often_as_asked(verb_sleeps: list[float]) -> None:
+    state = FakeRepository(pull_requests={7: pull_request()}, auto_merge_refusals={7: ["clean"]})
+
+    result = Harness(state).run(Verb.ENABLE_AUTOMERGE, {"number": 7, "attempts": 1})
+
+    assert result.outputs == {"decision": "ready", "state": "clean"}
+    assert verb_sleeps == []
+
+
+@pytest.mark.parametrize("attempts", [0, 7])
+def test_enable_automerge_rejects_attempts_out_of_range(attempts: int) -> None:
+    harness = Harness(FakeRepository(pull_requests={7: pull_request()}))
+
+    result = harness.run(Verb.ENABLE_AUTOMERGE, {"number": 7, "attempts": attempts})
+
+    assert result.outcome is VerbOutcome.ERROR
+    assert result.message == f"--attempts must be between 1 and 6, not {attempts}"
+
+
 def test_enable_automerge_defaults_to_squash() -> None:
     state = FakeRepository(pull_requests={7: pull_request()})
 

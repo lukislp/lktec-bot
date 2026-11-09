@@ -420,7 +420,8 @@ def test_sweep_hints_again_for_a_new_head() -> None:
 
 def test_sweep_arms_it_once_the_checks_are_registered() -> None:
     env = setup(pr(1))
-    env.state.auto_merge_refusals[1] = ["clean"] * 6
+    # The sweep tries once per run (the state has settled there), so one refusal per sweep.
+    env.state.auto_merge_refusals[1] = ["clean"]
     env.service.sweep()
 
     second = env.service.sweep()

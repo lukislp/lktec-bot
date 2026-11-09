@@ -63,7 +63,8 @@ GitHub refuses to enable auto-merge on a pull request that can be merged right n
 seconds of Dependabot opening the pull request, sometimes before the required checks are
 registered; with nothing pending GitHub counts the pull request as mergeable. So
 `enable-automerge` retries the mutation up to six times, ten seconds apart, which is long enough
-for the checks to show up. When it is still refused the verb returns `ok` with
+for the checks to show up (`--attempts`, 1 to 6; the sweep passes 1 because it sees the settled
+state and would otherwise wait a minute per ready pull request every hour). When it is still refused the verb returns `ok` with
 `decision=ready` and the pull request is **ready**: approved by the bot, mergeable now, and
 waiting for a person to merge it (the bot has no merge verb). `arm` then reports the decision
 `ready`, exit 0, so the `automerge / arm` check is green. A red check there would be a
