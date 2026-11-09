@@ -12,7 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SEMVER_CORE = r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+# [0-9], not \d: \d also matches other scripts' digits (Arabic-Indic, ...), which int() reads.
+SEMVER_CORE = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
 _SEMVER = re.compile(rf"^{SEMVER_CORE}\Z")
 # What may stand around ``{version}`` in a tag: the characters of a plain git tag name.
 _TAG_TEXT = re.compile(r"^[A-Za-z0-9._/@-]*\Z")
