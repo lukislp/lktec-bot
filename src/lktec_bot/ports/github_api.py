@@ -153,6 +153,19 @@ class CheckRun:
     external_id: str | None = None
 
 
+class AutoMergeNotNeeded(Exception):
+    """GitHub refused to enable auto-merge because the pull request can be merged right now.
+
+    GitHub only arms auto-merge on a pull request that is blocked by something pending; with no
+    pending required check it answers ``is in clean status`` (or ``unstable``, ``has_hooks``).
+    ``state`` is that status in lower case.
+    """
+
+    def __init__(self, state: str) -> None:
+        super().__init__(f"pull request is already mergeable ({state})")
+        self.state = state
+
+
 class BranchUpdate(StrEnum):
     """What ``update_branch`` achieved: the update was queued, or there was nothing to do."""
 
@@ -205,7 +218,9 @@ class GitHubApi(Protocol):
     ) -> str:
         """Enable auto-merge on pull request ``number`` and return the PR URL.
 
-        The adapter resolves the pull request's GraphQL node id itself.
+        The adapter resolves the pull request's GraphQL node id itself. Raises
+        :class:`AutoMergeNotNeeded` when GitHub refuses because the pull request can be merged
+        right now.
         """
         ...
 

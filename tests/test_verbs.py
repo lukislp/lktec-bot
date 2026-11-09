@@ -64,6 +64,7 @@ def test_every_shipped_verb_declares_its_options() -> None:
     assert [option.name for option in registry[Verb.ENABLE_AUTOMERGE].options] == [
         "number",
         "method",
+        "attempts",
     ]
     assert [option.name for option in registry[Verb.UPDATE_BRANCH].options] == ["number"]
     assert [option.name for option in registry[Verb.RELEASE].options] == [

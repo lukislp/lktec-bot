@@ -11,6 +11,7 @@ from typing import Any
 
 from lktec_bot.adapters.github_http import GitHubHttpError
 from lktec_bot.ports.github_api import (
+    AutoMergeNotNeeded,
     BranchUpdate,
     CheckRun,
     CommitInfo,
@@ -103,6 +104,9 @@ class FakeRepository:
     reviews: dict[int, list[Review]] = field(default_factory=dict)
     comments: dict[int, list[IssueComment]] = field(default_factory=dict)
     branch_update: BranchUpdate = BranchUpdate.ACCEPTED
+    # GitHub's "is in <state> status" refusals of ``enable_auto_merge``, one state per call and
+    # pull request, before the mutation is accepted (``["clean", "clean"]``: refused twice).
+    auto_merge_refusals: dict[int, list[str]] = field(default_factory=dict)
     created_comments: list[tuple[int, str]] = field(default_factory=list)
     updated_comments: list[tuple[int, str]] = field(default_factory=list)
     reviews_created: list[tuple[int, str, str]] = field(default_factory=list)
@@ -227,6 +231,9 @@ class FakeGitHubApi:
         self, owner: str, repo: str, number: int, merge_method: MergeMethod
     ) -> str:
         self.calls.append(("enable_auto_merge", (owner, repo, number, merge_method)))
+        refusals = self.state.auto_merge_refusals.get(number)
+        if refusals:
+            raise AutoMergeNotNeeded(refusals.pop(0))
         self.state.auto_merge.append((number, merge_method))
         self.state.log.append(f"enable-automerge #{number} {merge_method.lower()}")
         pull_request = self.state.pull_requests[number]

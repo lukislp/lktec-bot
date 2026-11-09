@@ -10,6 +10,14 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from lktec_bot.ports.key_source import AppCredentials
 
 
+@pytest.fixture(autouse=True)
+def verb_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The waits of ``enable-automerge``'s retry, recorded instead of slept, for every test."""
+    sleeps: list[float] = []
+    monkeypatch.setattr("lktec_bot.application.verbs.enable_automerge.sleep", sleeps.append)
+    return sleeps
+
+
 @pytest.fixture(scope="session")
 def rsa_key_pair() -> tuple[str, str]:
     """(private PEM, public PEM) generated once per test session."""

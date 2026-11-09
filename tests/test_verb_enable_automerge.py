@@ -28,6 +28,70 @@ def test_enable_automerge_runs_the_mutation_with_contents_and_pull_requests_writ
     assert state.auto_merge == [(7, graphql)]
 
 
+def test_enable_automerge_reports_the_decision_enabled(verb_sleeps: list[float]) -> None:
+    state = FakeRepository(pull_requests={7: pull_request()})
+
+    result = Harness(state).run(Verb.ENABLE_AUTOMERGE, {"number": 7})
+
+    assert result.outputs == {"decision": "enabled"}
+    assert verb_sleeps == []
+
+
+def test_enable_automerge_retries_while_github_says_the_pull_request_is_mergeable(
+    verb_sleeps: list[float],
+) -> None:
+    state = FakeRepository(
+        pull_requests={7: pull_request()}, auto_merge_refusals={7: ["clean", "unstable"]}
+    )
+
+    result = Harness(state).run(Verb.ENABLE_AUTOMERGE, {"number": 7})
+
+    assert result.outcome is VerbOutcome.OK
+    assert result.message == "auto-merge (squash) enabled on #7"
+    assert result.outputs == {"decision": "enabled"}
+    assert verb_sleeps == [10.0, 10.0]
+    assert state.auto_merge == [(7, "SQUASH")]
+
+
+def test_enable_automerge_gives_up_after_six_refusals_without_an_error(
+    verb_sleeps: list[float],
+) -> None:
+    state = FakeRepository(
+        pull_requests={7: pull_request()}, auto_merge_refusals={7: ["clean"] * 6}
+    )
+
+    result = Harness(state).run(Verb.ENABLE_AUTOMERGE, {"number": 7})
+
+    assert result.outcome is VerbOutcome.OK
+    assert result.message == (
+        "#7 is already mergeable (clean): GitHub does not enable auto-merge on a pull request "
+        "that can be merged now; it needs a person to merge it"
+    )
+    assert result.outputs == {"decision": "ready", "state": "clean"}
+    assert result.url == "https://github.com/acme/widgets/pull/7"
+    assert verb_sleeps == [10.0] * 5
+    assert state.auto_merge == []
+
+
+def test_enable_automerge_tries_only_as_often_as_asked(verb_sleeps: list[float]) -> None:
+    state = FakeRepository(pull_requests={7: pull_request()}, auto_merge_refusals={7: ["clean"]})
+
+    result = Harness(state).run(Verb.ENABLE_AUTOMERGE, {"number": 7, "attempts": 1})
+
+    assert result.outputs == {"decision": "ready", "state": "clean"}
+    assert verb_sleeps == []
+
+
+@pytest.mark.parametrize("attempts", [0, 7])
+def test_enable_automerge_rejects_attempts_out_of_range(attempts: int) -> None:
+    harness = Harness(FakeRepository(pull_requests={7: pull_request()}))
+
+    result = harness.run(Verb.ENABLE_AUTOMERGE, {"number": 7, "attempts": attempts})
+
+    assert result.outcome is VerbOutcome.ERROR
+    assert result.message == f"--attempts must be between 1 and 6, not {attempts}"
+
+
 def test_enable_automerge_defaults_to_squash() -> None:
     state = FakeRepository(pull_requests={7: pull_request()})
 
@@ -42,6 +106,7 @@ def test_enable_automerge_is_idempotent_for_the_same_method() -> None:
 
     assert result.ok
     assert result.message == "auto-merge (rebase) is already enabled on #7"
+    assert result.outputs == {"decision": "unchanged"}
     assert state.auto_merge == []
 
 

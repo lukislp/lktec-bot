@@ -153,13 +153,52 @@ def test_sweep_prints_a_line_per_pull_request_and_writes_the_table(
         result.stdout
     )
     assert "#9 (someone, BEHIND): updated onto its base" in result.stdout
-    assert "ok: armed 1, re-approved 0, updated 1, recreate needed 0, errors 0" in result.stdout
+    assert (
+        "ok: armed 1, ready 0, re-approved 0, updated 1, recreate needed 0, errors 0"
+        in result.stdout
+    )
     assert wired.state.log == ["approve #7", "enable-automerge #7 squash", "update-branch #9"]
     values = outputs(tmp_path)
     assert (values["result"], values["armed"], values["updated"]) == ("ok", "1", "1")
-    assert (values["recreated"], values["errors"]) == ("0", "0")
+    assert (values["recreated"], values["errors"], values["ready"]) == ("0", "0", "0")
     summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
     assert "| #9 | someone | BEHIND | updated onto its base |" in summary
+
+
+def test_arm_of_a_mergeable_pull_request_is_green_with_the_decision_ready(
+    wired: Wired, tmp_path: Path, verb_sleeps: list[float]
+) -> None:
+    wired.state.auto_merge_refusals[7] = ["clean"] * 6
+
+    result = runner.invoke(app, ["automerge", "arm", "-R", "acme/widgets", "--number", "7"])
+
+    assert result.exit_code == 0, result.output
+    assert (
+        "ready: patch update: approved; already mergeable, needs a person to merge" in result.stdout
+    )
+    values = outputs(tmp_path)
+    assert (values["result"], values["decision"]) == ("ok", "ready")
+    assert wired.state.log == ["approve #7"]
+    assert verb_sleeps == [10.0] * 5
+
+
+def test_sweep_counts_a_mergeable_pull_request_as_ready_and_not_as_an_error(
+    wired: Wired, tmp_path: Path
+) -> None:
+    wired.state.auto_merge_refusals[7] = ["clean"] * 6
+
+    result = runner.invoke(app, ["automerge", "sweep", "-R", "acme/widgets"])
+
+    assert result.exit_code == 0, result.output
+    assert "#7 (dependabot[bot], CLEAN): approved; already mergeable, needs a person to merge" in (
+        result.stdout
+    )
+    assert (
+        "ok: armed 0, ready 1, re-approved 0, updated 1, recreate needed 0, errors 0"
+        in result.stdout
+    )
+    values = outputs(tmp_path)
+    assert (values["armed"], values["ready"], values["errors"]) == ("0", "1", "0")
 
 
 def test_sweep_prints_revoke_warnings(wired: Wired) -> None:

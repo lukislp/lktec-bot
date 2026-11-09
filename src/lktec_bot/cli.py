@@ -447,14 +447,15 @@ def automerge_sweep(repository: Annotated[str, REPOSITORY_OPTION]) -> None:
         say(_with_budget(f"{outcome}: {result.failure.message}", gate))
     else:
         message = (
-            f"armed {result.armed}, re-approved {result.approved}, updated {result.updated}, "
-            f"recreate needed {result.recreated}, errors {result.errors}"
+            f"armed {result.armed}, ready {result.ready}, re-approved {result.approved}, "
+            f"updated {result.updated}, recreate needed {result.recreated}, errors {result.errors}"
         )
         write_outputs(
             {
                 "result": "ok",
                 "message": message,
                 "armed": str(result.armed),
+                "ready": str(result.ready),
                 "updated": str(result.updated),
                 "recreated": str(result.recreated),
                 "errors": str(result.errors),

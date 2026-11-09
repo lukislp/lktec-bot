@@ -12,6 +12,7 @@ import respx
 
 from lktec_bot.adapters.github_http import GitHubHttpError, HttpGitHubApi
 from lktec_bot.ports.github_api import (
+    AutoMergeNotNeeded,
     BranchUpdate,
     IssueComment,
     PullRequest,
@@ -527,6 +528,48 @@ def test_enable_auto_merge_resolves_the_node_id_then_mutates(
     mutation = json.loads(route.calls[1].request.content)
     assert "enablePullRequestAutoMerge" in mutation["query"]
     assert mutation["variables"] == {"pullRequestId": "PR_node", "mergeMethod": "SQUASH"}
+
+
+@pytest.mark.parametrize(
+    ("message", "state"),
+    [
+        ("Pull request Pull request is in clean status", "clean"),
+        ("Pull request Pull request is in unstable status", "unstable"),
+        ("Pull request is in HAS_HOOKS status", "has_hooks"),
+    ],
+)
+@respx.mock(base_url=BASE)
+def test_enable_auto_merge_maps_the_mergeable_now_refusal(
+    api: HttpGitHubApi, respx_mock: respx.MockRouter, message: str, state: str
+) -> None:
+    route = respx_mock.post("/graphql")
+    route.side_effect = [
+        httpx.Response(200, json={"data": {"repository": {"pullRequest": {"id": "PR_node"}}}}),
+        httpx.Response(200, json={"data": None, "errors": [{"message": message}]}),
+    ]
+
+    with pytest.raises(AutoMergeNotNeeded) as excinfo:
+        api.enable_auto_merge("acme", "widgets", 9, "SQUASH")
+
+    assert excinfo.value.state == state
+
+
+@respx.mock(base_url=BASE)
+def test_enable_auto_merge_keeps_other_graphql_errors_generic(
+    api: HttpGitHubApi, respx_mock: respx.MockRouter
+) -> None:
+    route = respx_mock.post("/graphql")
+    route.side_effect = [
+        httpx.Response(200, json={"data": {"repository": {"pullRequest": {"id": "PR_node"}}}}),
+        httpx.Response(
+            200, json={"data": None, "errors": [{"message": "Pull request is in dirty status"}]}
+        ),
+    ]
+
+    with pytest.raises(GitHubHttpError, match="in dirty status") as excinfo:
+        api.enable_auto_merge("acme", "widgets", 9, "SQUASH")
+
+    assert not isinstance(excinfo.value, AutoMergeNotNeeded)
 
 
 @respx.mock(base_url=BASE)
