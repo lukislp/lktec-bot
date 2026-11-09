@@ -88,10 +88,16 @@ case "$verb" in
       *) echo "::error::unexpected check decision: ${DECISION:-}"; exit 1 ;;
     esac
     # Exactly one check run of that name on the commit, and it is the one the verb reported.
-    # The name is the bot's alone: no other App or workflow job publishes it.
-    runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=lktec-bot%20e2e" \
-      --jq '[.check_runs[] | {url: .html_url, app: .app.slug}]')"
-    count="$(jq 'length' <<<"$runs")"
+    # The name is the bot's alone: no other App or workflow job publishes it. The list lags a few
+    # seconds behind a create (like the issue list above), so it is read again until the run shows.
+    count=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=lktec-bot%20e2e" \
+        --jq '[.check_runs[] | {url: .html_url, app: .app.slug}]')"
+      count="$(jq 'length' <<<"$runs")"
+      [ "$count" -ge 1 ] && break
+      sleep 3
+    done
     [ "$count" = 1 ] || { echo "::error::expected one check run, found $count: $runs"; exit 1; }
     [ "$(jq -r '.[0].url' <<<"$runs")" = "$URL" ] || {
       echo "::error::the check run on the commit is not the one the verb reported ($URL): $runs"
