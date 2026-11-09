@@ -143,14 +143,20 @@ def test_handlers_map_is_what_the_gate_takes() -> None:
     assert handlers()[Verb.PING] is ping
 
 
-def test_workflows_permission_appears_nowhere() -> None:
-    for spec in load_verbs().values():
+def test_workflows_permission_is_registered_for_update_branch_only() -> None:
+    for verb, spec in load_verbs().items():
         grant_sets = (
             list(spec.grants.values()) if isinstance(spec.grants, Mapping) else [spec.grants]
         )
         for grant_set in grant_sets:
-            assert "workflows" not in as_token_request(grant_set)
-    assert "workflows" not in {permission.value for permission in Permission}
+            has_workflows = "workflows" in as_token_request(grant_set)
+            assert has_workflows is (verb is Verb.UPDATE_BRANCH), verb
+    assert as_token_request(load_verbs()[Verb.UPDATE_BRANCH].grants) == {  # type: ignore[arg-type]
+        "contents": "write",
+        "pull_requests": "write",
+        "workflows": "write",
+    }
+    assert Permission.WORKFLOWS.value == "workflows"
 
 
 def test_register_refuses_duplicates() -> None:

@@ -174,7 +174,7 @@ whole project is reviewed in one place:
 | `comment`          | `pull_requests:write` or `issues:write`, by target |
 | `approve`          | `pull_requests:write`                    |
 | `enable-automerge` | `contents:write` + `pull_requests:write` |
-| `update-branch`    | `contents:write` + `pull_requests:write` |
+| `update-branch`    | `contents:write` + `pull_requests:write` + `workflows:write` |
 | `commit`           | `contents:write`                         |
 | `open-pr`          | `pull_requests:write`                    |
 | `release`          | `contents:write`                         |
@@ -196,7 +196,7 @@ calls yet.
 | `approve`          | `--number N [--body\|--body-file]`        | `APPROVE` review; refuses drafts and closed PRs (`error`); no second review for a head the bot already approved |
 | `enable-automerge` | `--number N --method squash\|merge\|rebase` | GraphQL `enablePullRequestAutoMerge`; refuses drafts and closed PRs; already enabled with the same method is `ok` (`decision=unchanged`), with another method an `error`; a pull request GitHub says is mergeable now is retried six times, then `ok` with `decision=ready` |
 | `update-branch`    | `--number N`                              | `PUT .../update-branch` with the current head sha; 202 is `ok`, GitHub's 422 "no new commits" is `ok` with a message, anything else an `error` |
-| `commit`           | `--branch B [--from BRANCH] --message HEADLINE [--body\|--body-file] [--add PATH=FILE]... [--delete PATH]... [--expected-head OID]` | GraphQL `createCommitOnBranch`: one commit that GitHub signs (verified; author is the App's bot, committer is GitHub); the branch must exist, unless `--from` names a branch to create it from (`POST git/refs` at that branch's head, only when the branch is missing; an existing branch is never moved and no ref is force-updated); `expectedHeadOid` is `--expected-head` or the head resolved right before, so a concurrent push fails the mutation instead of being overwritten; refuses absolute paths, `..`, `.git` and everything under `.github/workflows/` (the App has no `workflows` permission) |
+| `commit`           | `--branch B [--from BRANCH] --message HEADLINE [--body\|--body-file] [--add PATH=FILE]... [--delete PATH]... [--expected-head OID]` | GraphQL `createCommitOnBranch`: one commit that GitHub signs (verified; author is the App's bot, committer is GitHub); the branch must exist, unless `--from` names a branch to create it from (`POST git/refs` at that branch's head, only when the branch is missing; an existing branch is never moved and no ref is force-updated); `expectedHeadOid` is `--expected-head` or the head resolved right before, so a concurrent push fails the mutation instead of being overwritten; refuses absolute paths, `..`, `.git` and everything under `.github/workflows/` (the `commit` token carries no `workflows` permission) |
 | `release`          | `--tag T --sha SHA --name TITLE [--body\|--body-file] [--latest\|--no-latest] [--prerelease]` | `POST releases` with `target_commitish`: GitHub creates the lightweight tag at `SHA` when it does not exist. Release exists and the tag points at `SHA`: `unchanged`; the tag exists at another commit: `error`, a tag is never moved. Outputs `decision` (`created`, `unchanged`, `error`), `url`, `tag` |
 | `open-pr`          | `--head B --base B --title T [--body\|--body-file] [--draft]` | upsert: an open pull request `head` into `base` gets its title, body (only when given) and draft state changed to what was asked, only where they differ (the draft state through GraphQL, REST cannot toggle it); none exists: one is opened. Outputs `decision` (`opened`, `updated`, `unchanged`, `error`), `url`, `number` |
 | `open-issue`     | `--title T --body\|--body-file [--marker ID] [--label L]... [--reopen\|--no-reopen]` | opens an issue; with a marker it is an upsert keyed on the invisible `<!-- lktec-bot:ID -->` tag in the body **and** the actor login as author (the issues the bot opened are listed with `creator=`, pull requests skipped; several matches: the oldest is used). A match gets the title, body and labels it lacks changed in one `PATCH` (labels are only added, never removed); nothing differs: no write; a closed one is reopened, or with `--no-reopen` a new one is opened. Labels must exist (an unknown one is an `error` with GitHub's message). Outputs `decision` (`opened`, `updated`, `reopened`, `unchanged`, `error`), `url`, `number` |
@@ -240,13 +240,32 @@ the repository owner configured, and the App would need to be a bypass actor, wh
 this project exists to get rid of. The ruleset keeps `RepositoryRole admin` as the only bypass
 actor, and only through a pull request.
 
-### Why `workflows` is never requested
+### Why only `update-branch` gets `workflows`
 
-The `workflows` permission lets a token change `.github/workflows/*`. The bot is driven from
-those workflows; a verb that could rewrite them could change its own gate. `Permission` has no
-such member, and `tests/test_permissions.py` and `tests/test_verbs.py` assert that no verb
-and no registration requests it. A pull request that touches workflow files is made by a
-person and reviewed as such.
+The `workflows` permission lets a token create or update `.github/workflows/*`. The bot is
+driven from those workflows; a verb that could rewrite them could change its own gate, so no
+verb that writes content of its own gets it.
+
+`update-branch` is the one exception. It only asks GitHub to merge the base branch into a pull
+request branch, and GitHub treats that merge as a workflow write whenever the base changed a
+file under `.github/workflows/` (a merged actions bump, a pin of the shared or the bot's own
+workflows). Without the permission it answers `403 refusing to allow a GitHub App to create or
+update workflow ... without workflows permission`, and every routine Dependabot pull request
+stays behind its base. The content of that merge is the base branch, which is already reviewed
+and already on the protected branch; the verb cannot supply workflow text of its own.
+
+`Permission.WORKFLOWS` exists for this one grant. `tests/test_permissions.py` asserts that it is
+in the grants of `update-branch` and of no other verb, and `tests/test_verbs.py` asserts the same
+for the registrations, so a later change cannot spread it. The `commit` verb additionally refuses
+every path under `.github/workflows/` (`domain/paths.py`), and the `lockfiles`, `release` and
+`sync` modules never ask for the permission. A pull request that touches workflow files is made
+by a person and reviewed as such.
+
+Residual risk: the App itself now carries `workflows: write`, so a leaked private key could
+change workflow files in every repository the App is installed on. The key is the existing
+single point of compromise ([assurance case](assurance-case.md)); the per-verb token narrowing
+means only a run of `update-branch` ever holds the permission, and no job that runs pull request
+code sees the key.
 
 ## Adding a verb
 

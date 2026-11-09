@@ -249,9 +249,9 @@ token, narrowed to one repository:
 | head, tags, compare, commits (`release run`)  | `contents: read`     |
 | `release` (tag and GitHub release)            | `contents: write`    |
 
-No `workflows` permission is ever requested (see [architecture](../architecture.md)): a release
-does not need to change a workflow file, and a bot that could would be able to change its own
-gate.
+This module never requests the `workflows` permission (only `update-branch` holds it, see
+[architecture](../architecture.md)): a release does not need to change a workflow file, and a
+bot that could would be able to change its own gate.
 
 ## Setting up a repository
 

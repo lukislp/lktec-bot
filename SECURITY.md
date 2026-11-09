@@ -97,4 +97,5 @@ by commit SHA, not from a download: pin the SHA of a release tag and let Dependa
   file or environment variable of the operator), `*.pem` is git-ignored, and secret scanning with
   push protection is on.
 - Every verb asks for exactly one narrowed installation token and revokes it afterwards; the
-  `workflows` permission is never requested ([architecture](docs/architecture.md#the-gate)).
+  `workflows` permission is requested by `update-branch` alone and by no other verb
+  ([architecture](docs/architecture.md#why-only-update-branch-gets-workflows)).
