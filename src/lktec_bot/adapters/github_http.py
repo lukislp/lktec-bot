@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -17,6 +18,7 @@ import httpx
 
 from lktec_bot.adapters._http_common import DEFAULT_BASE_URL, github_headers
 from lktec_bot.ports.github_api import (
+    AutoMergeNotNeeded,
     BranchUpdate,
     CheckRun,
     CommitInfo,
@@ -49,6 +51,10 @@ query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) { pullRequest(number: $number) { id } }
 }
 """
+
+# GitHub's refusal to arm auto-merge on a pull request that can be merged right now, e.g.
+# "Pull request Pull request is in clean status".
+_MERGEABLE_NOW = re.compile(r"is in (clean|unstable|has_hooks) status", re.IGNORECASE)
 
 _ENABLE_AUTO_MERGE = """
 mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
@@ -231,9 +237,15 @@ class HttpGitHubApi:
     ) -> str:
         lookup = self.graphql(_PULL_REQUEST_ID, {"owner": owner, "name": repo, "number": number})
         node_id = _node(lookup, "repository", "pullRequest", "id")
-        data = self.graphql(
-            _ENABLE_AUTO_MERGE, {"pullRequestId": node_id, "mergeMethod": merge_method}
-        )
+        try:
+            data = self.graphql(
+                _ENABLE_AUTO_MERGE, {"pullRequestId": node_id, "mergeMethod": merge_method}
+            )
+        except GitHubHttpError as exc:
+            refused = _MERGEABLE_NOW.search(str(exc))
+            if refused is None:
+                raise
+            raise AutoMergeNotNeeded(refused.group(1).lower()) from exc
         return _node(data, "enablePullRequestAutoMerge", "pullRequest", "url")
 
     def update_branch(

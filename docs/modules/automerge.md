@@ -54,9 +54,21 @@ A pull request is armed only when all of this holds, checked in this order:
 
 Classifies the pull request and, when eligible, runs the verb `approve` (idempotent per head
 commit) and then `enable-automerge` with the configured `method`. It never merges directly. It
-writes `result` (`ok`, `denied`, `error`), `decision` (`armed`, `skipped`, `denied`, `error`),
-`reason` and `url` to `$GITHUB_OUTPUT` and a line to the job summary. A pull request that is
-not eligible is `skipped` with the reason, exit 0.
+writes `result` (`ok`, `denied`, `error`), `decision` (`armed`, `ready`, `skipped`, `denied`,
+`error`), `reason` and `url` to `$GITHUB_OUTPUT` and a line to the job summary. A pull request
+that is not eligible is `skipped` with the reason, exit 0.
+
+GitHub refuses to enable auto-merge on a pull request that can be merged right now
+(`Pull request is in clean status`, also `unstable` and `has_hooks`). The `arm` job runs within
+seconds of Dependabot opening the pull request, sometimes before the required checks are
+registered; with nothing pending GitHub counts the pull request as mergeable. So
+`enable-automerge` retries the mutation up to six times, ten seconds apart, which is long enough
+for the checks to show up. When it is still refused the verb returns `ok` with
+`decision=ready` and the pull request is **ready**: approved by the bot, mergeable now, and
+waiting for a person to merge it (the bot has no merge verb). `arm` then reports the decision
+`ready`, exit 0, so the `automerge / arm` check is green. A red check there would be a
+non-required failure that keeps the pull request `UNSTABLE`, and every sweep would be refused
+the same way.
 
 ### `lktec-bot automerge sweep --repository owner/name`
 
@@ -65,6 +77,17 @@ Looks at every open, non-draft pull request:
 1. **Arm.** A Dependabot pull request without auto-merge is classified and armed exactly as
    `arm` does. This is what catches a pull request the `arm` job never saw (it runs once, at
    creation, under whatever pin the caller had then) or saw under older rules.
+   If GitHub still refuses because the pull request can be merged right now, the row says
+   `approved; already mergeable, needs a person to merge`, it counts under `ready` (not under
+   `errors`) and the sweep leaves one hint through the verb `comment` (marker
+   `automerge-ready-<head>`: once per head commit, updated in place if the state changed):
+   "lktec-bot approved this pull request, but GitHub does not enable auto-merge on a pull
+   request that can be merged right away (state: clean). Please merge it." The hint is posted
+   only by the sweep, which sees the settled state, not by `arm`, which runs in the race
+   window. A hint that cannot be posted is a warning. The approval is not repeated every hour:
+   `approve` is a no-op while the bot's approval is on the current head. Each sweep does retry
+   the enable step for such a pull request (about 50 seconds), because it may have been
+   refused only for lack of registered checks.
 2. **Keep up to date.** A pull request that has auto-merge enabled, or was opened by anyone but
    Dependabot, and is `BEHIND` its base gets `update-branch`. A Dependabot pull request left
    for a person (a major, an excluded dependency) is not rebuilt on every push: whoever merges
@@ -93,7 +116,9 @@ Looks at every open, non-draft pull request:
 
 GitHub computes the merge state lazily, so `UNKNOWN` is polled (six tries, ten seconds apart).
 The result is a summary table with one row per pull request; the exit code is 0, also when a
-single step failed (the row says `ERROR ...` and `errors` is in the outputs). The exit code is 3
+single step failed (the row says `ERROR ...` and `errors` is in the outputs). The summary line
+and the outputs count `armed`, `ready`, `updated`, `recreated` and `errors`
+(`armed X, ready N, re-approved ..., updated ..., recreate needed ..., errors ...`). The exit code is 3
 when the policy denies the module and 1 when the pull requests cannot be read at all.
 
 An **excluded** Dependabot pull request without auto-merge is left entirely alone. One a
@@ -126,7 +151,7 @@ the gate with its own token, narrowed to one repository:
 | `approve`                    | `pull_requests: write`                   |
 | `enable-automerge`           | `contents: write` + `pull_requests: write` |
 | `update-branch`              | `contents: write` + `pull_requests: write` |
-| `comment` (recreate)         | `pull_requests: write`                   |
+| `comment` (recreate, ready)  | `pull_requests: write`                   |
 
 The `workflows` permission is never requested (see `docs/architecture.md`).
 

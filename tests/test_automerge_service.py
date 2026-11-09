@@ -308,6 +308,31 @@ def test_arm_reports_a_failed_enable_after_the_approval() -> None:
     assert env.state.log == ["approve #7"]
 
 
+def test_arm_of_a_pull_request_github_calls_mergeable_is_ready_and_green() -> None:
+    env = setup(pr(7))
+    env.state.auto_merge_refusals[7] = ["clean"] * 6
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert result.exit_code == 0
+    assert result.reason == "patch update: approved; already mergeable, needs a person to merge"
+    assert result.state == "clean"
+    assert result.url == "https://github.com/acme/widgets/pull/7"
+    assert env.state.log == ["approve #7"]
+    assert env.state.created_comments == []  # the arm job runs in the race window: no hint
+
+
+def test_arm_retries_until_the_checks_have_registered() -> None:
+    env = setup(pr(7))
+    env.state.auto_merge_refusals[7] = ["clean", "clean"]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.ARMED
+    assert env.state.log == ["approve #7", "enable-automerge #7 squash"]
+
+
 def test_arm_carries_revoke_warnings() -> None:
     env = setup(pr(7), failing_revokes=5)
 
@@ -353,6 +378,69 @@ def test_sweep_arms_routine_dependabot_pull_requests_and_leaves_the_rest() -> No
     assert [row.number for row in result.rows] == [1, 2, 3, 6]
     notes = {row.number: row.note for row in result.rows}
     assert notes[2] == "left for a person (major update (majors: manual))"
+
+
+READY_HINT = (
+    "lktec-bot approved this pull request, but GitHub does not enable auto-merge on a pull "
+    "request that can be merged right away (state: unstable). Please merge it.\n\n"
+    "<!-- lktec-bot:automerge-ready-0123456789ab -->\n"
+)
+
+
+def test_sweep_counts_a_mergeable_pull_request_as_ready_and_hints_once_per_head() -> None:
+    env = setup(pr(1))
+    env.state.auto_merge_refusals[1] = ["unstable"] * 12
+
+    first = env.service.sweep()
+    second = env.service.sweep()
+
+    assert (first.ready, first.armed, first.errors) == (1, 0, 0)
+    assert first.exit_code == 0
+    assert first.rows[0].actions == ["approved; already mergeable, needs a person to merge"]
+    assert first.rows[0].errors == []
+    assert env.state.created_comments == [(1, READY_HINT)]
+    # the second tick: ready again, but no new review and no second hint
+    assert second.ready == 1
+    assert env.state.log == ["approve #1", "comment #1"]
+    assert second.approved == 0
+    assert "ready 1" in first.to_markdown("acme/widgets")
+
+
+def test_sweep_hints_again_for_a_new_head() -> None:
+    env = setup(pr(1))
+    env.state.auto_merge_refusals[1] = ["clean"] * 12
+    env.service.sweep()
+    env.state.pull_requests[1] = replace(env.state.pull_requests[1], head_sha="e" * 40)
+
+    env.service.sweep()
+
+    assert len(env.state.created_comments) == 2
+    assert "automerge-ready-eeeeeeeeeeee" in env.state.created_comments[1][1]
+
+
+def test_sweep_arms_it_once_the_checks_are_registered() -> None:
+    env = setup(pr(1))
+    env.state.auto_merge_refusals[1] = ["clean"] * 6
+    env.service.sweep()
+
+    second = env.service.sweep()
+
+    assert (second.armed, second.ready) == (1, 0)
+    assert env.state.log == ["approve #1", "comment #1", "enable-automerge #1 squash"]
+
+
+def test_sweep_treats_a_failed_ready_hint_as_a_warning() -> None:
+    # mints: 0 policy, 1 read, 2 policy, 3 approve, 4 policy, 5 enable, 6 policy, 7 comment
+    tokens = FakeTokenProvider(permissions_by_mint={7: BROAD})
+    env = setup(pr(1), tokens=tokens)
+    env.state.auto_merge_refusals[1] = ["clean"] * 6
+
+    result = env.service.sweep()
+
+    assert (result.ready, result.errors) == (1, 0)
+    assert result.rows[0].errors == []
+    assert any(warning.startswith("#1: ready hint not posted:") for warning in result.warnings)
+    assert env.state.created_comments == []
 
 
 def test_sweep_does_not_look_at_the_state_of_a_pull_request_it_leaves_alone() -> None:
@@ -711,7 +799,7 @@ def test_sweep_markdown_has_a_table_with_one_row_per_pull_request() -> None:
     text = env.service.sweep().to_markdown("acme/widgets")
 
     assert "### automerge sweep on `acme/widgets`" in text
-    assert "armed 1, re-approved 0, updated 0, recreate needed 0, errors 0" in text
+    assert "armed 1, ready 0, re-approved 0, updated 0, recreate needed 0, errors 0" in text
     assert "| #1 | dependabot\\[bot\\] | CLEAN |" in text
     assert "| #2 | dependabot\\[bot\\] | - | left for a person" in text
     assert "Warning: token not revoked" in text

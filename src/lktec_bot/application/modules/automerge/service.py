@@ -41,6 +41,12 @@ RECREATE_HINT = (
     "people with push access, so a maintainer needs to comment `@dependabot recreate`; the "
     "sweep arms the rebuilt pull request again."
 )
+READY_MARKER = "automerge-ready"
+READY_ACTION = "approved; already mergeable, needs a person to merge"
+READY_HINT = (
+    "lktec-bot approved this pull request, but GitHub does not enable auto-merge on a pull "
+    "request that can be merged right away (state: {state}). Please merge it."
+)
 WHY_CONFLICT = "it conflicts with its base"
 WHY_UNSIGNED = (
     "it has a commit GitHub does not verify ({reason}), which a ruleset that requires signed "
@@ -56,6 +62,7 @@ class Decision(StrEnum):
     """The outcome of ``arm`` for one pull request."""
 
     ARMED = "armed"
+    READY = "ready"  # approved, but mergeable right now: GitHub does not arm it, a person merges
     SKIPPED = "skipped"
     DENIED = "denied"
     ERROR = "error"
@@ -68,6 +75,7 @@ class ArmResult:
     reason: str
     url: str | None = None
     warnings: tuple[str, ...] = ()
+    state: str = ""  # GitHub's mergeable status, set with ``Decision.READY``
 
     @property
     def exit_code(self) -> int:
@@ -105,6 +113,7 @@ class Row:
 class SweepResult:
     rows: tuple[Row, ...] = ()
     armed: int = 0
+    ready: int = 0
     approved: int = 0
     updated: int = 0
     recreated: int = 0
@@ -126,8 +135,8 @@ class SweepResult:
         lines = [
             f"### automerge sweep on `{repository}`",
             "",
-            f"armed {self.armed}, re-approved {self.approved}, updated {self.updated}, "
-            f"recreate needed {self.recreated}, errors {self.errors}",
+            f"armed {self.armed}, ready {self.ready}, re-approved {self.approved}, "
+            f"updated {self.updated}, recreate needed {self.recreated}, errors {self.errors}",
             "",
         ]
         if self.rows:
@@ -262,6 +271,17 @@ class Automerge:
         enable = self._verb(Verb.ENABLE_AUTOMERGE, number, method=options.method)
         if not enable.ok:
             return _failed(number, enable, (*warnings, *approve.warnings), "enable-automerge")
+        if enable.outputs.get("decision") == "ready":
+            # GitHub does not arm a pull request that can be merged right now; the arm job is
+            # green on purpose, a red check would only keep the pull request UNSTABLE.
+            return ArmResult(
+                number,
+                Decision.READY,
+                f"{eligibility.reason}: {READY_ACTION}",
+                enable.url,
+                (*warnings, *approve.warnings, *enable.warnings),
+                enable.outputs.get("state", ""),
+            )
         reason = f"{eligibility.reason}: approved, auto-merge ({options.method}) enabled"
         return ArmResult(
             number,
@@ -281,7 +301,7 @@ class Automerge:
             return SweepResult(failure=failure, warnings=read.warnings)
         survey = read.value
         rows: list[Row] = []
-        counts = {"armed": 0, "approved": 0, "updated": 0, "recreated": 0}
+        counts = {"armed": 0, "ready": 0, "approved": 0, "updated": 0, "recreated": 0}
         warnings = list(read.warnings)
         for entry in survey.entries:
             row = self._sweep_one(entry, survey.options, counts, warnings)
@@ -289,6 +309,7 @@ class Automerge:
         return SweepResult(
             rows=tuple(rows),
             armed=counts["armed"],
+            ready=counts["ready"],
             approved=counts["approved"],
             updated=counts["updated"],
             recreated=counts["recreated"],
@@ -369,6 +390,12 @@ class Automerge:
                 return row
             armed = self._arm_verbs(number, options, eligibility, ())
             warnings.extend(armed.warnings)
+            if armed.decision is Decision.READY:
+                # Approved and mergeable now: nothing else to do to it, a person merges it.
+                row.actions.append(READY_ACTION)
+                counts["ready"] += 1
+                self._hint_ready(pull_request, armed.state, warnings)
+                return row
             if armed.decision is not Decision.ARMED:
                 row.errors.append(f"{armed.decision.value}: {armed.reason}")
                 return row
@@ -446,6 +473,27 @@ class Automerge:
             return
         row.actions.append(action)
         counts["recreated"] += 1
+
+    def _hint_ready(self, pull_request: PullRequest, state: str, warnings: list[str]) -> None:
+        # One marker per head, like the recreate hint. A failed hint costs nothing but the hint,
+        # so it is a warning and never an error of the row.
+        result = self._gate.run(
+            VerbRequest(
+                self._owner,
+                self._repo,
+                MODULE,
+                Verb.COMMENT,
+                target=Target.PULL_REQUEST,
+                args={
+                    "number": pull_request.number,
+                    "body": READY_HINT.format(state=state),
+                    "marker": f"{READY_MARKER}-{pull_request.head_sha[:12]}",
+                },
+            )
+        )
+        warnings.extend(result.warnings)
+        if not result.ok:
+            warnings.append(f"#{pull_request.number}: ready hint not posted: {result.message}")
 
     def _reapprove(
         self, number: int, row: Row, warnings: list[str], counts: dict[str, int]
