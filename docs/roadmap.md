@@ -25,7 +25,8 @@ welcome as [issues](https://github.com/lukislp/lktec-bot/issues).
   repositories that do not want a tag straight from `main` ([release module](modules/release.md)).
 - **More verbs where a module needs them**, each with exactly one App permission and an entry in
   the verb table: `deployment` is listed there but has no handler yet.
-  `workflows` stays with `update-branch` alone and there is no `merge` verb.
+  `workflows` stays with `update-branch` and `merge` alone; `merge` is narrow (only a pull
+  request GitHub will not arm because it is already mergeable, opt-in `merge-ready`).
 - **Signed release tags.** Today the tag is created by the App through the API and is not signed;
   the signed assets are what to verify. Revisit when GitHub can sign tags created that way.
 - **Other token providers** behind the existing `TokenProvider` port (today only the GitHub App

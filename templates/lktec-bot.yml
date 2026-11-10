@@ -10,6 +10,10 @@ modules:
     workflow-files: auto # auto | manual
     # How GitHub merges once the checks are green.
     method: squash # squash | merge | rebase
+    # true: a pull request GitHub refuses to arm because it is already mergeable (all checks done)
+    # is merged by the bot, bound to the head it approved and to branch protection. false: it is
+    # approved and left for a person.
+    merge-ready: false # true | false
     # Dependency names (exact, case-insensitive) that are never approved or armed. A grouped
     # pull request is skipped as a whole when any member is listed.
     exclude: []

@@ -17,20 +17,21 @@ with exactly the permissions the bot needs and nothing else:
 | `name`                                  | `REPLACE-ME-my-repo-bot`                | Placeholder; the name must be unique across GitHub.            |
 | `url`                                   | this repository                         | Required by GitHub; any URL describing the App will do.        |
 | `public`                                | `false`                                 | Only you can install it.                                       |
-| `default_permissions.contents`          | `write`                                 | `enable-automerge`, `update-branch`, `commit`, `release`. Tokens are narrowed per verb; the App's maximum is not what a verb gets. |
-| `default_permissions.pull_requests`     | `write`                                 | `comment`, `approve`, `enable-automerge`, `update-branch`, `open-pr`. |
+| `default_permissions.contents`          | `write`                                 | `enable-automerge`, `merge`, `update-branch`, `commit`, `release`. Tokens are narrowed per verb; the App's maximum is not what a verb gets. |
+| `default_permissions.pull_requests`     | `write`                                 | `comment`, `approve`, `enable-automerge`, `merge`, `update-branch`, `open-pr`. |
 | `default_permissions.metadata`          | `read`                                  | Always included by GitHub.                                     |
 | `default_permissions.issues`            | `write`                                 | `open-issue`, and `comment` on an issue (`--target issue`).      |
 | `default_permissions.checks`            | `write`                                 | `check`.                                                       |
-| `default_permissions.workflows`         | `write`                                 | `update-branch` only: GitHub refuses to merge a base branch that changed `.github/workflows/*` into a pull request branch for an App without it. No other verb asks for it. |
+| `default_permissions.workflows`         | `write`                                 | `update-branch` and `merge` only: GitHub refuses an App to merge a base branch that changed `.github/workflows/*` into a pull request branch, or to merge a pull request that changes workflow files, without it. No other verb asks for it. |
 | `request_oauth_on_install`              | `false`                                 | The bot has no user flow.                                      |
 | `redirect_url`                          | `http://localhost/`                     | Where GitHub sends the one-time code (see below).              |
 | no `hook_attributes`, no `default_events` | -                                     | The bot runs from workflows; it receives no events and has no webhook. |
 
-`workflows: write` is requested by the `update-branch` verb alone and only so that GitHub accepts
-the merge of the base branch into a pull request branch when the base changed a workflow file
-(see [architecture.md](architecture.md#why-only-update-branch-gets-workflows)). Every other verb's
-token is minted without it. If you do not run `update-branch` (the `automerge` module uses it),
+`workflows: write` is requested by the `update-branch` and `merge` verbs alone and only so that
+GitHub accepts the merge of the base branch into a pull request branch when the base changed a
+workflow file, and the merge of a pull request that changes one
+(see [architecture.md](architecture.md#why-only-update-branch-and-merge-get-workflows)). Every other verb's
+token is minted without it. If you run neither `update-branch` nor `merge` (the `automerge` module uses both),
 leave `workflows` out. The permission for the one verb that does not ship yet (`deployments: write`) can be added on the App's settings page later. An App registered from an earlier manifest gets `issues`, `checks` and `workflows` the same way; accept them on the installation afterwards.
 
 ### The flow

@@ -4,7 +4,8 @@ Dependabot updates that are routine get approved by the App and armed for auto-m
 merges them once the required checks are green. Everything else is left to a person. This is
 the behaviour of the shared `dependabot-auto-merge` workflow in `ci-workflows`, ported onto the
 bot: same classification, but the credential is a narrowly scoped App token instead of a
-personal access token, and nothing here ever merges or bypasses a rule.
+personal access token, and nothing here ever bypasses a rule. The one case where the bot merges
+itself is the opt-in `merge-ready` option below.
 
 It ships as
 
@@ -53,9 +54,10 @@ A pull request is armed only when all of this holds, checked in this order:
 ### `lktec-bot automerge arm --repository owner/name --number N`
 
 Classifies the pull request and, when eligible, runs the verb `approve` (idempotent per head
-commit) and then `enable-automerge` with the configured `method`. It never merges directly. It
-writes `result` (`ok`, `denied`, `error`), `decision` (`armed`, `ready`, `skipped`, `denied`,
-`error`), `reason` and `url` to `$GITHUB_OUTPUT` and a line to the job summary. A pull request
+commit) and then `enable-automerge` with the configured `method`. It merges directly only in
+the `merge-ready` case described below. It
+writes `result` (`ok`, `denied`, `error`), `decision` (`armed`, `merged`, `ready`, `skipped`,
+`denied`, `error`), `reason` and `url` to `$GITHUB_OUTPUT` and a line to the job summary. A pull request
 that is not eligible is `skipped` with the reason, exit 0.
 
 GitHub refuses to enable auto-merge on a pull request that can be merged right now
@@ -66,10 +68,32 @@ registered; with nothing pending GitHub counts the pull request as mergeable. So
 for the checks to show up (`--attempts`, 1 to 6; the sweep passes 1 because it sees the settled
 state and would otherwise wait a minute per ready pull request every hour). When it is still refused the verb returns `ok` with
 `decision=ready` and the pull request is **ready**: approved by the bot, mergeable now, and
-waiting for a person to merge it (the bot has no merge verb). `arm` then reports the decision
-`ready`, exit 0, so the `automerge / arm` check is green. A red check there would be a
-non-required failure that keeps the pull request `UNSTABLE`, and every sweep would be refused
-the same way.
+waiting for a person to merge it (unless `merge-ready` is on, see below). `arm` then reports
+the decision `ready`, exit 0, so the `automerge / arm` check is green. A red check there would
+be a non-required failure that keeps the pull request `UNSTABLE`, and every sweep would be
+refused the same way.
+
+#### `merge-ready`: merging what GitHub will not arm
+
+Almost all of these pull requests bump workflow pins: there is little CI, so every check is
+finished before the `arm` job runs and GitHub counts the pull request as already mergeable.
+With `merge-ready: true` the module calls the `merge` verb right after `enable-automerge`
+returned `decision=ready`, with the head commit the decision was made on (`arm` and the sweep
+both pass it). The result is `merged` with the reason `<eligibility>: approved, merged (already
+mergeable, auto-merge refused)`, and the sweep counts it under `merged`, next to `armed` and
+`ready`. With `merge-ready: false` (the default) nothing changes: `ready`, plus the hint.
+
+The `merge` verb checks everything again right before it merges and refuses on any doubt: the
+pull request is open and not a draft; its head is the expected one (also sent as `sha`, so a
+push in between fails at GitHub); GitHub's `mergeable_state` is `clean` (not `unstable`,
+`blocked`, `behind`, `dirty`; `unknown` is read again up to three times in all); the latest
+review by the App on that head is an approval. It merges only through
+`PUT /pulls/{n}/merge`, which respects branch protection and rulesets; 405 and 409 are refusals
+with GitHub's message, never an error and never an admin bypass. When `merge` refuses (or fails),
+the module falls back to the `ready` path (hint comment) and adds the refusal to the warnings; a
+refusal never turns the job red. A pull request that the policy leaves to a person (majors,
+`workflow-files: manual`, excluded dependencies, non-Dependabot pull requests) is never merged
+by the bot.
 
 ### `lktec-bot automerge sweep --repository owner/name`
 
@@ -80,7 +104,8 @@ Looks at every open, non-draft pull request:
    creation, under whatever pin the caller had then) or saw under older rules.
    If GitHub still refuses because the pull request can be merged right now, the row says
    `approved; already mergeable, needs a person to merge`, it counts under `ready` (not under
-   `errors`) and the sweep leaves one hint through the verb `comment` (marker
+   `errors`; with `merge-ready: true` the `merge` verb merges it first and the row says
+   `approved, merged (already mergeable, auto-merge refused)`, counted under `merged`) and the sweep leaves one hint through the verb `comment` (marker
    `automerge-ready-<head>`: once per head commit, updated in place if the state changed):
    "lktec-bot approved this pull request, but GitHub does not enable auto-merge on a pull
    request that can be merged right away (state: clean). Please merge it." The hint is posted
@@ -118,8 +143,8 @@ Looks at every open, non-draft pull request:
 GitHub computes the merge state lazily, so `UNKNOWN` is polled (six tries, ten seconds apart).
 The result is a summary table with one row per pull request; the exit code is 0, also when a
 single step failed (the row says `ERROR ...` and `errors` is in the outputs). The summary line
-and the outputs count `armed`, `ready`, `updated`, `recreated` and `errors`
-(`armed X, ready N, re-approved ..., updated ..., recreate needed ..., errors ...`). The exit code is 3
+and the outputs count `armed`, `merged`, `ready`, `updated`, `recreated` and `errors`
+(`armed X, merged M, ready N, re-approved ..., updated ..., recreate needed ..., errors ...`). The exit code is 3
 when the policy denies the module and 1 when the pull requests cannot be read at all.
 
 An **excluded** Dependabot pull request without auto-merge is left entirely alone. One a
@@ -136,7 +161,8 @@ verb, so a typo never changes behaviour.
 | `majors`         | `manual` (default), `auto`  | `manual`: a major is never armed. `auto`: it is treated like any update. |
 | `exclude`        | list of names, default `[]` | Exact, case-insensitive dependency names that are never approved or armed. A grouped pull request is skipped as a whole when any member is listed. |
 | `workflow-files` | `auto` (default), `manual`  | `manual`: a pull request that changes any file under `.github/workflows/` is never armed. |
-| `method`         | `squash` (default), `merge`, `rebase` | How GitHub merges once the checks are green. |
+| `method`         | `squash` (default), `merge`, `rebase` | How GitHub merges once the checks are green (also the method of the `merge` verb). |
+| `merge-ready`    | `false` (default), `true`   | `true`: a pull request GitHub refuses to arm because it is already mergeable is merged by the `merge` verb (head-bound, `clean` state, App approval, branch protection). A boolean; any other value is an error. |
 
 ## Permissions
 
@@ -151,19 +177,24 @@ the gate with its own token, narrowed to one repository:
 | reading pull requests, files | `pull_requests: read`                    |
 | `approve`                    | `pull_requests: write`                   |
 | `enable-automerge`           | `contents: write` + `pull_requests: write` |
+| `merge` (`merge-ready` only) | `contents: write` + `pull_requests: write` + `workflows: write` |
 | `update-branch`              | `contents: write` + `pull_requests: write` + `workflows: write` |
 | `comment` (recreate, ready)  | `pull_requests: write`                   |
 
-`update-branch` is the only verb that asks for `workflows: write`: GitHub refuses the merge of the
-base branch into a pull request branch without it once the base changed a workflow file. No other
-verb of this module asks for it (see `docs/architecture.md`).
+`update-branch` and `merge` are the only verbs that ask for `workflows: write`: GitHub refuses
+the merge of the base branch into a pull request branch, and the merge of a pull request that
+changes `.github/workflows/`, without it. No other verb of this module asks for it (see
+`docs/architecture.md`). The App manifest already carries the permission; enabling `merge-ready`
+needs no App settings change and no installation re-approval.
 
 ## Differences to the PAT workflow
 
 - **The bot approves and arms; GitHub merges.** The old sweep also retried a direct merge with an
-  admin token. Here there is no `merge` verb and no bypass actor: a pull request merges when the
+  admin token. Here there is no bypass actor and no admin merge: a pull request merges when the
   ruleset is satisfied the ordinary way (required checks green, the bot's approval counting
-  where a review is required).
+  where a review is required). The only direct merge is the opt-in `merge` verb for a pull
+  request GitHub refuses to arm because it is already mergeable, through the API that respects
+  branch protection.
 - **Identity.** Actions are the App's (`<app>[bot]`), visible as such in the audit log, not the
   owner's. Pushes and comments by the App do start workflows, unlike `GITHUB_TOKEN`.
 - **No long-lived secret with write access.** The App key is the only secret; tokens live for

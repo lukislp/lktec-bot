@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 
 class AutomergeOptions(BaseModel):
@@ -26,6 +26,10 @@ class AutomergeOptions(BaseModel):
     ``method``
         How GitHub merges once the checks are green: ``squash`` (default), ``merge`` or
         ``rebase``.
+    ``merge-ready``
+        ``false`` (default): a pull request GitHub will not arm because it is already mergeable
+        is approved and left for a person. ``true``: the ``merge`` verb merges it, bound to the
+        head the decision was made on and to branch protection.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -34,3 +38,4 @@ class AutomergeOptions(BaseModel):
     exclude: list[str] = []
     workflow_files: Literal["auto", "manual"] = Field(default="auto", alias="workflow-files")
     method: Literal["squash", "merge", "rebase"] = "squash"
+    merge_ready: StrictBool = Field(default=False, alias="merge-ready")

@@ -10,7 +10,7 @@ today, not a larger team.
 | --- | --- | --- |
 | **Maintainer** | [@lukislp](https://github.com/lukislp) (Lukas Koerber), the only person with write and admin access | Sets the direction and the [roadmap](docs/roadmap.md). Reviews and merges pull requests. Triages issues and security reports ([SECURITY.md](SECURITY.md)). Decides which permission a new verb may ask for. Enforces the [Code of Conduct](CODE_OF_CONDUCT.md). Administers the repository, the GitHub App that the project's own workflows use, and the App's private key (an Actions secret, [assurance case](docs/assurance-case.md)). |
 | **Contributor** | Anyone who opens an issue or a pull request | Follows [CONTRIBUTING.md](CONTRIBUTING.md) and the Code of Conduct. Contributors need no write access: every change arrives as a pull request. |
-| **Automation** (no human authority) | Dependabot, the `dependabot-*` workflows, the release module of this very bot | Dependabot proposes dependency updates as pull requests. The bot approves routine ones and enables auto-merge; GitHub merges once the required checks are green. The release workflow tags and publishes releases. None of them can bypass the required checks on `main`; the bot has no `merge` verb and only `update-branch` holds the `workflows` permission, to bring the base branch into a pull request ([architecture](docs/architecture.md#why-only-update-branch-gets-workflows)). |
+| **Automation** (no human authority) | Dependabot, the `dependabot-*` workflows, the release module of this very bot | Dependabot proposes dependency updates as pull requests. The bot approves routine ones and enables auto-merge; GitHub merges once the required checks are green. The release workflow tags and publishes releases. None of them can bypass the required checks on `main`; the bot's `merge` verb only merges a pull request GitHub refuses to arm because it is already mergeable, and only `update-branch` and `merge` hold the `workflows` permission ([architecture](docs/architecture.md#why-only-update-branch-and-merge-get-workflows)). |
 
 There are no other roles: no co-maintainers, no committee, no release managers. A contributor with
 sustained, high-quality contributions can be offered co-maintainer access (see
@@ -26,8 +26,14 @@ sustained, high-quality contributions can be offered co-maintainer access (see
   the issue.
 - **Permission changes are the most sensitive decision.** The verb table in
   `src/lktec_bot/domain/permissions.py` is the single reviewed place; the `workflows`
-  permission belongs to `update-branch` alone (decided 2026-11-09, a test pins it), no other
-  verb may get it, and there is no `merge` verb. A change that widens what the App may
+  permission belongs to `update-branch` (decided 2026-11-09) and `merge` (decided 2026-11-10),
+  a test pins it, and no other verb may get it. The `merge` verb is narrow by decision: it
+  merges only a pull request that GitHub's auto-merge refused because it is already mergeable,
+  never as an admin. The maintainer deferred it on 2026-11-09 ("keep watching, then decide") and
+  decided for it on 2026-11-10 with these numbers: 241 Dependabot pull requests merged across
+  the account since v0.7.3, 226 (94 %) by GitHub's auto-merge within three minutes of the last
+  check, about 9 left for a person who took between 6 minutes and 6.5 hours, almost all of them
+  workflow pin bumps. A change that widens what the App may
   do is described in the pull request body, including the migration for repositories that have
   opted in.
 - **Breaking changes** (policy schema, verb signatures, action inputs) are marked in the title

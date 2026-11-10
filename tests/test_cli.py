@@ -175,7 +175,7 @@ def test_policy_check_invalid_file(tmp_path: Path) -> None:
 
 
 def test_policy_check_rejects_unknown_verb() -> None:
-    result = runner.invoke(app, ["policy", "check", "-m", "ping", "-v", "merge"])
+    result = runner.invoke(app, ["policy", "check", "-m", "ping", "-v", "frobnicate"])
 
     assert result.exit_code == 2
 
@@ -390,6 +390,29 @@ def test_update_branch_command(automerge_gate: FakeRepository) -> None:
     assert result.exit_code == 0, result.output
     assert "ok: update of #7 accepted" in result.output
     assert automerge_gate.branch_updates == [(7, "abc")]
+
+
+def test_merge_command_refuses_without_an_approval_and_exits_1(
+    automerge_gate: FakeRepository,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "merge",
+            "-R",
+            "acme/widgets",
+            "-m",
+            "automerge",
+            "--number",
+            "7",
+            "--expected-head-sha",
+            "abc",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "error: refusing to merge: #7 is not mergeable right now" in result.output
+    assert automerge_gate.merges == []
 
 
 def test_verb_error_exits_1(automerge_gate: FakeRepository) -> None:

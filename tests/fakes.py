@@ -20,6 +20,7 @@ from lktec_bot.ports.github_api import (
     Issue,
     IssueComment,
     MergeMethod,
+    MergeRefused,
     PullRequest,
     PullRequestCommit,
     RateLimit,
@@ -112,6 +113,9 @@ class FakeRepository:
     reviews_created: list[tuple[int, str, str]] = field(default_factory=list)
     auto_merge: list[tuple[int, str]] = field(default_factory=list)
     branch_updates: list[tuple[int, str]] = field(default_factory=list)
+    # ``merge_pull_request`` calls (number, method, sha) and the GitHub messages that refuse one.
+    merges: list[tuple[int, str, str]] = field(default_factory=list)
+    merge_refusals: dict[int, str] = field(default_factory=dict)
     next_comment_id: int = 100
     # Changed files per pull request; what ``list_pull_request_files`` answers.
     pull_files: dict[int, list[str]] = field(default_factory=dict)
@@ -239,6 +243,21 @@ class FakeGitHubApi:
         pull_request = self.state.pull_requests[number]
         self.state.pull_requests[number] = replace(pull_request, auto_merge_method=merge_method)
         return f"https://github.com/{owner}/{repo}/pull/{number}"
+
+    def merge_pull_request(
+        self, owner: str, repo: str, number: int, merge_method: MergeMethod, expected_head_sha: str
+    ) -> str:
+        self.calls.append(
+            ("merge_pull_request", (owner, repo, number, merge_method, expected_head_sha))
+        )
+        refusal = self.state.merge_refusals.get(number)
+        if refusal is not None:
+            raise MergeRefused(refusal)
+        self.state.merges.append((number, merge_method, expected_head_sha))
+        self.state.log.append(f"merge #{number} {merge_method.lower()}")
+        pull_request = self.state.pull_requests[number]
+        self.state.pull_requests[number] = replace(pull_request, state="closed")
+        return "m" * 40
 
     def update_branch(
         self, owner: str, repo: str, number: int, expected_head_sha: str

@@ -155,9 +155,12 @@ instead of falling back to a branch.
   bot run costs a handful of requests; the hourly `automerge` sweep scales with the number of
   open Dependabot pull requests. The adapter waits out short limits and reports
   `rate limit remaining: N` in the summary; see [architecture.md](architecture.md).
-- **The bot never merges and never touches `.github/workflows/`.** Auto-merge lets GitHub merge
-  when the required checks are green; a Dependabot pull request that changes workflow files is
-  armed or left to a person by the `workflow-files` option of `automerge`.
+- **The bot merges only what GitHub will not arm, and never edits `.github/workflows/`.**
+  Auto-merge lets GitHub merge when the required checks are green; a Dependabot pull request
+  that changes workflow files is armed or left to a person by the `workflow-files` option of
+  `automerge`. With `merge-ready: true` the `merge` verb merges a pull request GitHub refuses
+  to arm because it is already mergeable (checks all finished); it never bypasses branch
+  protection.
 
 ## Rotating or removing the bot
 

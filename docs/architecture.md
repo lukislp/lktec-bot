@@ -198,6 +198,7 @@ calls yet.
 | `comment`          | `--target pr\|issue --number N --body\|--body-file [--marker ID]` | posts a comment; with a marker, appends `<!-- lktec-bot:ID -->` and on later runs updates the bot's own comment carrying it (matched on the actor login, never on the marker alone); unchanged body is a no-op |
 | `approve`          | `--number N [--body\|--body-file]`        | `APPROVE` review; refuses drafts and closed PRs (`error`); no second review for a head the bot already approved |
 | `enable-automerge` | `--number N --method squash\|merge\|rebase` | GraphQL `enablePullRequestAutoMerge`; refuses drafts and closed PRs; already enabled with the same method is `ok` (`decision=unchanged`), with another method an `error`; a pull request GitHub says is mergeable now is retried six times, then `ok` with `decision=ready` |
+| `merge`            | `--number N [--method squash\|merge\|rebase] --expected-head-sha SHA` | `PUT .../pulls/N/merge` with `merge_method` and `sha`; only for a pull request GitHub refuses to arm because it is already mergeable. Refuses (`error`, `decision=refused`) unless the pull request is open, not a draft, at `SHA`, in `mergeable_state` `clean` (`unknown` is read up to three times) and the latest review by the App on `SHA` is an approval; 405/409 from GitHub are refusals with its message. Outputs `decision` (`merged`, `refused`), `sha` (the merge commit) |
 | `update-branch`    | `--number N`                              | `PUT .../update-branch` with the current head sha; 202 is `ok`, GitHub's 422 "no new commits" is `ok` with a message, anything else an `error` |
 | `commit`           | `--branch B [--from BRANCH] --message HEADLINE [--body\|--body-file] [--add PATH=FILE]... [--delete PATH]... [--expected-head OID]` | GraphQL `createCommitOnBranch`: one commit that GitHub signs (verified; author is the App's bot, committer is GitHub); the branch must exist, unless `--from` names a branch to create it from (`POST git/refs` at that branch's head, only when the branch is missing; an existing branch is never moved and no ref is force-updated); `expectedHeadOid` is `--expected-head` or the head resolved right before, so a concurrent push fails the mutation instead of being overwritten; refuses absolute paths, `..`, `.git` and everything under `.github/workflows/` (the `commit` token carries no `workflows` permission) |
 | `release`          | `--tag T --sha SHA --name TITLE [--body\|--body-file] [--latest\|--no-latest] [--prerelease]` | `POST releases` with `target_commitish`: GitHub creates the lightweight tag at `SHA` when it does not exist. Release exists and the tag points at `SHA`: `unchanged`; the tag exists at another commit: `error`, a tag is never moved. Outputs `decision` (`created`, `unchanged`, `error`), `url`, `tag` |
@@ -235,21 +236,49 @@ GitHub documents the mutation under the pull-request permission, but a token nar
 succeeds. The table row and the registration carry both, like `update-branch`, which also
 schedules a write to the branch.
 
-### Why there is no `merge` verb
+### The `merge` verb and its limits
 
-Merging is what branch protection is for. The bot enables auto-merge; GitHub merges once the
-required checks and reviews are green. A `merge` verb would be a bypass of exactly the rules
-the repository owner configured, and the App would need to be a bypass actor, which is what
-this project exists to get rid of. The ruleset keeps `RepositoryRole admin` as the only bypass
-actor, and only through a pull request.
+Merging is what branch protection is for, and the normal mechanism stays auto-merge: the bot
+approves, enables it, and GitHub merges once the required checks and reviews are green. The
+`merge` verb exists for one case. `enablePullRequestAutoMerge` refuses a pull request whose
+required checks are already done ("clean status"). From 2026-11-07 to 2026-11-10, 241 Dependabot
+pull requests were merged across the account; 226 (94 %) by GitHub's auto-merge, armed within
+three minutes of the last check, and about 9 hit that refusal. They were almost all workflow pin
+bumps (little CI, every check finished before the `arm` job), approved by the bot and then
+waited between 6 minutes and 6.5 hours for the maintainer. The maintainer decided on 2026-11-10
+to add a narrow verb for exactly those.
 
-### Why only `update-branch` gets `workflows`
+The limits are part of the design:
+
+- **Only for `ready`.** The automerge module calls `merge` only after `enable-automerge`
+  answered `decision=ready` and only with the option `merge-ready: true` (default `false`).
+  Majors, `workflow-files: manual`, excluded dependencies and non-Dependabot pull requests are
+  never merged by the bot.
+- **Never admin, never a bypass.** The verb uses `PUT /pulls/{n}/merge`, which GitHub evaluates
+  under branch protection and rulesets like a person's merge; the App is not a bypass actor for
+  it, and the ruleset keeps `RepositoryRole admin` as the only bypass actor. There is no
+  fallback to another API.
+- **Bound to a head and re-checked.** The verb merges the head the eligibility was decided on
+  (`expected_head_sha`, also sent as `sha`, so a push between decision and merge fails at
+  GitHub), only when GitHub reports `mergeable_state` `clean` and the App's own latest review on
+  that head is an approval. Anything else is a refusal, and the module falls back to the
+  `ready` path (hint comment) with the refusal as a warning; a refusal never turns the job red.
+- **Needs `workflows`.** GitHub refuses an App's merge of a pull request that changes
+  `.github/workflows/` without the `workflows` permission, and those are the main case.
+
+Residual risk: a leaked App key could already merge through auto-merge. The verb adds no new
+capability beyond merging without waiting for GitHub's auto-merge, and that merge is still bound
+to branch protection. See the [assurance case](assurance-case.md).
+
+### Why only `update-branch` and `merge` get `workflows`
 
 The `workflows` permission lets a token create or update `.github/workflows/*`. The bot is
 driven from those workflows; a verb that could rewrite them could change its own gate, so no
 verb that writes content of its own gets it.
 
-`update-branch` is the one exception. It only asks GitHub to merge the base branch into a pull
+`update-branch` and `merge` are the two exceptions. `merge` only merges a pull request GitHub
+itself reports as mergeable under branch protection, and GitHub treats that merge as a workflow
+write when the pull request changes a workflow file. `update-branch` only asks GitHub to merge the base branch into a pull
 request branch, and GitHub treats that merge as a workflow write whenever the base changed a
 file under `.github/workflows/` (a merged actions bump, a pin of the shared or the bot's own
 workflows). Without the permission it answers `403 refusing to allow a GitHub App to create or
@@ -258,7 +287,7 @@ stays behind its base. The content of that merge is the base branch, which is al
 and already on the protected branch; the verb cannot supply workflow text of its own.
 
 `Permission.WORKFLOWS` exists for this one grant. `tests/test_permissions.py` asserts that it is
-in the grants of `update-branch` and of no other verb, and `tests/test_verbs.py` asserts the same
+in the grants of `update-branch` and `merge` and of no other verb, and `tests/test_verbs.py` asserts the same
 for the registrations, so a later change cannot spread it. The `commit` verb additionally refuses
 every path under `.github/workflows/` (`domain/paths.py`), and the `lockfiles`, `release` and
 `sync` modules never ask for the permission. A pull request that touches workflow files is made
@@ -267,7 +296,7 @@ by a person and reviewed as such.
 Residual risk: the App itself now carries `workflows: write`, so a leaked private key could
 change workflow files in every repository the App is installed on. The key is the existing
 single point of compromise ([assurance case](assurance-case.md)); the per-verb token narrowing
-means only a run of `update-branch` ever holds the permission, and no job that runs pull request
+means only a run of `update-branch` or `merge` ever holds the permission, and no job that runs pull request
 code sees the key.
 
 ## Adding a verb

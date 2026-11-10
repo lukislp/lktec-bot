@@ -6,8 +6,9 @@ name: Automerge (reusable)
 #
 # arm:   a Dependabot pull request is classified (patch, minor, digest refresh: routine; major:
 #        a person; see docs/modules/automerge.md); a routine one is approved by the App and gets
-#        auto-merge enabled. The bot never merges: GitHub merges once the required checks are
-#        green, under the repository's own rules.
+#        auto-merge enabled. GitHub merges once the required checks are green, under
+#        the repository's own rules. Only with the policy option merge-ready does the bot merge
+#        a pull request GitHub refused to arm because it is already mergeable.
 # sweep: hourly and on every push to the default branch. Arms routine Dependabot pull requests
 #        that were missed, updates behind branches (auto-merge enabled, or opened by a person),
 #        and leaves a hint for a maintainer to recreate a conflicting pull request (Dependabot

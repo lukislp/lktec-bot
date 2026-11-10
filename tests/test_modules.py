@@ -34,13 +34,17 @@ def test_registry_declares_the_shipped_modules() -> None:
     assert MODULES["automerge"].verbs == {
         Verb.APPROVE,
         Verb.ENABLE_AUTOMERGE,
+        Verb.MERGE,
         Verb.UPDATE_BRANCH,
         Verb.COMMENT,
     }
     assert MODULES["automerge"].options is AutomergeOptions
     assert MODULES["ping"].verbs == {Verb.PING}
     assert MODULES["ping"].options is None
-    assert MODULES["automerge"].verb_names() == "approve, comment, enable-automerge, update-branch"
+    assert (
+        MODULES["automerge"].verb_names()
+        == "approve, comment, enable-automerge, merge, update-branch"
+    )
 
 
 def test_register_module_refuses_duplicates() -> None:
@@ -159,7 +163,7 @@ def test_authorize_denies_a_verb_outside_the_module_set() -> None:
     assert decision.allowed is False
     assert decision.reason == (
         "module 'automerge' may not run 'release'; its verbs are: "
-        "approve, comment, enable-automerge, update-branch"
+        "approve, comment, enable-automerge, merge, update-branch"
     )
 
 
@@ -192,6 +196,7 @@ def test_automerge_options_defaults() -> None:
     assert options.exclude == []
     assert options.workflow_files == "auto"
     assert options.method == "squash"
+    assert options.merge_ready is False
 
 
 def test_automerge_options_accept_every_documented_value() -> None:
@@ -240,3 +245,16 @@ def test_authorize_module_follows_the_documented_order() -> None:
         authorize_module(enabled, "mine", {"mine": ModuleSpec("mine", frozenset())}).allowed
         is False
     )
+
+
+def test_merge_ready_is_a_hyphenated_bool_that_defaults_to_false() -> None:
+    spec = MODULES["automerge"]
+
+    assert spec.option_problems({"merge-ready": True}) == []
+    assert spec.option_problems({"merge-ready": False}) == []
+    assert AutomergeOptions.model_validate({"merge-ready": True}).merge_ready is True
+    assert spec.option_problems({"merge_ready": True}) == [
+        "merge_ready: Extra inputs are not permitted"
+    ]
+    for wrong in ("yes", "true", 1, "on", None):
+        assert spec.option_problems({"merge-ready": wrong}), wrong

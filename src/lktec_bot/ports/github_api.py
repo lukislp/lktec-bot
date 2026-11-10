@@ -166,6 +166,17 @@ class AutoMergeNotNeeded(Exception):
         self.state = state
 
 
+class MergeRefused(Exception):
+    """GitHub refused to merge a pull request (405 not mergeable, 409 head moved).
+
+    ``message`` is GitHub's own explanation; this is a decision, not a failure of the call.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 class BranchUpdate(StrEnum):
     """What ``update_branch`` achieved: the update was queued, or there was nothing to do."""
 
@@ -221,6 +232,16 @@ class GitHubApi(Protocol):
         The adapter resolves the pull request's GraphQL node id itself. Raises
         :class:`AutoMergeNotNeeded` when GitHub refuses because the pull request can be merged
         right now.
+        """
+        ...
+
+    def merge_pull_request(
+        self, owner: str, repo: str, number: int, merge_method: MergeMethod, expected_head_sha: str
+    ) -> str:
+        """Merge pull request ``number`` through ``PUT .../pulls/{n}/merge`` and return the sha.
+
+        ``expected_head_sha`` is sent as ``sha``, so GitHub refuses when the head moved. Raises
+        :class:`MergeRefused` on 405 and 409; branch protection is never bypassed.
         """
         ...
 
