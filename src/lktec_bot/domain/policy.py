@@ -111,7 +111,9 @@ def load_policy(text: str) -> Policy:
     """
     try:
         raw = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
+    except (yaml.YAMLError, ValueError, RecursionError) as exc:
+        # PyYAML lets some malformed input escape as ValueError (``"\U7fffffff"`` -> chr()
+        # out of range) or RecursionError (deep nesting); all of it is an invalid policy.
         raise PolicyError([f"not valid YAML: {exc}"]) from exc
     if raw is None:
         raise PolicyError(["the policy file is empty"])

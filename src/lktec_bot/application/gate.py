@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, field, replace
@@ -35,8 +36,16 @@ TOKEN_NOT_REVOKED = "token not revoked"  # noqa: S105 - a warning prefix, not a 
 _NAME = re.compile(r"[A-Za-z0-9_.-]+")
 _ACCESS_RANK = {"read": 1, "write": 2}
 
+# Waits before the 2nd and 3rd read of the policy file when GitHub first answers 404 (a fresh
+# installation token or a replica lag can do that for a file that exists).
+POLICY_READ_RETRY_DELAYS: tuple[float, ...] = (2.0, 5.0)
+
 # Called with every minted token value before anything else happens with it (``::add-mask::``).
 Masker = Callable[[str], None]
+
+
+def _wait(seconds: float) -> None:
+    time.sleep(seconds)
 
 
 def validate_name(kind: str, value: str) -> str:
@@ -165,6 +174,7 @@ class Gate:
         caller_token: str | None = None,
         policy_path: str = POLICY_PATH,
         mask: Masker | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._tokens = tokens
         self._api_factory = api_factory
@@ -173,6 +183,7 @@ class Gate:
         self._caller_token = caller_token
         self._policy_path = policy_path
         self._mask = mask
+        self._sleep = _wait if sleep is None else sleep
         # The budget the last client reported; the CLI prints it, nothing decides on it.
         self.last_rate_limit: RateLimit | None = None
 
@@ -320,23 +331,35 @@ class Gate:
     def _load_policy(self, owner: str, repo: str, warnings: list[str]) -> Policy | None:
         if self._caller_token is not None:
             with self._client(self._caller_token) as api:
-                return self._read_policy(api, owner, repo)
+                return self._read_policy(api, owner, repo, warnings)
         token = self._mint(owner, repo, POLICY_READ_PERMISSIONS)
         try:
             problem = self._scope_problem(token, POLICY_READ_PERMISSIONS, repo)
             if problem is not None:
                 raise TokenError(f"policy token refused: {problem}")
             with self._client(token.value) as api:
-                return self._read_policy(api, owner, repo)
+                return self._read_policy(api, owner, repo, warnings)
         finally:
             self._revoke_safely(token, warnings)
 
-    def _read_policy(self, api: GitHubApi, owner: str, repo: str) -> Policy | None:
+    def _read_policy(
+        self, api: GitHubApi, owner: str, repo: str, warnings: list[str]
+    ) -> Policy | None:
         # No ref: the policy comes from the default branch, never from a pull request head,
         # so a PR cannot bring its own permissions along.
         text = api.get_file_content(owner, repo, self._policy_path)
+        attempts = 1
+        for delay in POLICY_READ_RETRY_DELAYS:
+            if text is not None:
+                break
+            # A 404 right after minting a token can be transient; look again before concluding.
+            self._sleep(delay)
+            attempts += 1
+            text = api.get_file_content(owner, repo, self._policy_path)
         if text is None:
             return None
+        if attempts > 1:
+            warnings.append(f"policy read needed {attempts} attempts (GitHub answered 404 first)")
         return validate_policy(text, self._modules)
 
     def _revoke_safely(self, token: Token, warnings: list[str]) -> None:

@@ -41,6 +41,7 @@ def make_gate(
     caller_token: str | None = None,
     tokens: FakeTokenProvider | None = None,
     mask: list[str] | None = None,
+    sleeps: list[float] | None = None,
 ) -> tuple[Gate, FakeTokenProvider, FakeApiFactory]:
     files = {POLICY_PATH: policy_text} if policy_text is not None else {}
     provider = tokens if tokens is not None else FakeTokenProvider()
@@ -52,6 +53,7 @@ def make_gate(
         registry,  # type: ignore[arg-type]
         caller_token=caller_token,
         mask=mask.append if mask is not None else None,
+        sleep=sleeps.append if sleeps is not None else None,
     )
     return gate, provider, factory
 
@@ -160,6 +162,56 @@ def test_missing_policy_file_is_denied() -> None:
     assert "missing" in result.message
     assert len(tokens.minted) == 1
     assert tokens.minted[0].revoked
+
+
+def test_missing_policy_file_is_read_three_times_with_waits_before_denial() -> None:
+    sleeps: list[float] = []
+    gate, _, factory = make_gate(None, sleeps=sleeps)
+
+    result = gate.run(request())
+
+    assert result.outcome is VerbOutcome.DENIED
+    assert "missing" in result.message
+    assert result.warnings == ()
+    assert sleeps == [2.0, 5.0]
+    assert [c for api in factory.created for c in api.calls].count(
+        ("get_file_content", ("acme", "widgets", POLICY_PATH, None))
+    ) == 3
+
+
+def test_policy_found_on_a_retry_is_allowed_with_a_warning() -> None:
+    sleeps: list[float] = []
+    files: dict[str, str] = {}
+
+    def appear(seconds: float) -> None:
+        sleeps.append(seconds)
+        files[POLICY_PATH] = ENABLED  # GitHub stops answering 404 after the first wait
+
+    gate = Gate(FakeTokenProvider(), FakeApiFactory(files), handlers(), sleep=appear)
+
+    result = gate.run(request())
+
+    assert result.ok
+    assert sleeps == [2.0]
+    assert result.warnings == ("policy read needed 2 attempts (GitHub answered 404 first)",)
+
+
+def test_default_wait_uses_time_sleep(policy_read_sleeps: list[float]) -> None:
+    gate, _, _ = make_gate(None)
+    gate._sleep(2.0)
+
+    assert policy_read_sleeps == [2.0]
+
+
+def test_policy_found_at_once_neither_sleeps_nor_warns() -> None:
+    sleeps: list[float] = []
+    gate, _, _ = make_gate(ENABLED, sleeps=sleeps)
+
+    result = gate.run(request())
+
+    assert result.ok
+    assert sleeps == []
+    assert result.warnings == ()
 
 
 def test_undeclared_module_is_denied() -> None:

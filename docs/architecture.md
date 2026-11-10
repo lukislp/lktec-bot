@@ -57,7 +57,10 @@ order is fixed and every step fails closed:
    permissions) with a token narrowed to `contents:read`, or with the caller's token when
    `LKTEC_BOT_CALLER_TOKEN` is set (for example the workflow's `GITHUB_TOKEN`). The file is
    validated against the registry: an unknown module name, or an option its module does not
-   take, makes the whole file invalid and denies everything.
+   take, makes the whole file invalid and denies everything. A 404 on this read is retried
+   twice (after 2 s and 5 s) before the file counts as missing, because GitHub can answer 404
+   briefly for a file that exists; a retry that finds it adds a warning to the result. Only
+   this read retries, other file reads do not.
 4. **Decide.** `authorize(policy, module, verb)` returns a `Decision` with a readable reason:
    missing file, invalid file, module not declared, module not enabled, verb not in the
    module's verb set - each one `denied`.
