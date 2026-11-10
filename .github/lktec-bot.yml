@@ -10,9 +10,9 @@ modules:
     enabled: true
     majors: manual
     workflow-files: auto
-    # merge-ready (the merge verb) is switched on together with the pin to the release that
-    # knows it: the workflows here run the pinned bot, which rejects an option it does not know
-    # (v0.8.1 denied the whole policy and the release of v0.9.0 failed).
+    # Merge a pull request GitHub refuses to arm because it is already mergeable (merge verb,
+    # lktec-bot v0.9.0): only that case, bound to the approved head, never an admin merge.
+    merge-ready: true
   lockfiles:
     enabled: true
     ecosystems: [uv]
