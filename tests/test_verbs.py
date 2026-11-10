@@ -42,6 +42,7 @@ def test_the_phase_one_verbs_ship_in_this_release() -> None:
         Verb.COMMENT,
         Verb.APPROVE,
         Verb.ENABLE_AUTOMERGE,
+        Verb.MERGE,
         Verb.UPDATE_BRANCH,
         Verb.COMMIT,
         Verb.RELEASE,
@@ -61,6 +62,11 @@ def test_every_shipped_verb_declares_its_options() -> None:
         "marker",
     ]
     assert [option.name for option in registry[Verb.APPROVE].options] == ["number", "body"]
+    assert [option.name for option in registry[Verb.MERGE].options] == [
+        "number",
+        "method",
+        "expected_head_sha",
+    ]
     assert [option.name for option in registry[Verb.ENABLE_AUTOMERGE].options] == [
         "number",
         "method",
@@ -143,15 +149,20 @@ def test_handlers_map_is_what_the_gate_takes() -> None:
     assert handlers()[Verb.PING] is ping
 
 
-def test_workflows_permission_is_registered_for_update_branch_only() -> None:
+def test_workflows_permission_is_registered_for_update_branch_and_merge_only() -> None:
     for verb, spec in load_verbs().items():
         grant_sets = (
             list(spec.grants.values()) if isinstance(spec.grants, Mapping) else [spec.grants]
         )
         for grant_set in grant_sets:
             has_workflows = "workflows" in as_token_request(grant_set)
-            assert has_workflows is (verb is Verb.UPDATE_BRANCH), verb
+            assert has_workflows is (verb in (Verb.UPDATE_BRANCH, Verb.MERGE)), verb
     assert as_token_request(load_verbs()[Verb.UPDATE_BRANCH].grants) == {  # type: ignore[arg-type]
+        "contents": "write",
+        "pull_requests": "write",
+        "workflows": "write",
+    }
+    assert as_token_request(load_verbs()[Verb.MERGE].grants) == {  # type: ignore[arg-type]
         "contents": "write",
         "pull_requests": "write",
         "workflows": "write",

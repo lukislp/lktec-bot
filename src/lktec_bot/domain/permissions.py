@@ -6,12 +6,14 @@
 The installation token minted for a verb is narrowed to exactly the grants listed here. The
 table is deliberately complete for every planned verb, even though only ``ping`` ships today,
 so the permission footprint of the whole project is visible in one place and reviewed as a
-unit. The ``workflows`` permission is granted to ``update-branch`` alone, because that verb
+unit. The ``workflows`` permission is granted to ``update-branch`` and ``merge`` alone. The first
 only asks GitHub to merge the base branch (already reviewed, already on the protected branch)
-into a pull request branch; it cannot write workflow content of its own. Without the
-permission GitHub refuses that merge whenever the base changed a file under
-``.github/workflows/``. Every other verb stays without it, and it must not be added to any
-other verb: it would let that verb change the CI definitions that gate the bot's own actions.
+into a pull request branch; the second only merges a pull request that GitHub itself reports
+as mergeable under branch protection. Neither can write workflow content of its own. Without
+the permission GitHub refuses both whenever the change touches a file under
+``.github/workflows/``, which is the main case for workflow pin bumps. Every other verb stays
+without it, and it must not be added to any other verb: it would let that verb change the CI
+definitions that gate the bot's own actions.
 """
 
 from __future__ import annotations
@@ -54,6 +56,7 @@ class Verb(StrEnum):
     COMMENT = "comment"
     APPROVE = "approve"
     ENABLE_AUTOMERGE = "enable-automerge"
+    MERGE = "merge"
     UPDATE_BRANCH = "update-branch"
     COMMIT = "commit"
     OPEN_PR = "open-pr"
@@ -92,6 +95,14 @@ _VERB_PERMISSIONS: Mapping[Verb, frozenset[Grant]] = {
     # workflow ... without `workflows` permission"). The verb only merges the base into the
     # pull request branch; no other verb gets this permission.
     Verb.UPDATE_BRANCH: _grants(
+        (Permission.CONTENTS, "write"),
+        (Permission.PULL_REQUESTS, "write"),
+        (Permission.WORKFLOWS, "write"),
+    ),
+    # Merges only a pull request GitHub reports as ``clean`` (the case where auto-merge is
+    # refused), through the API that respects branch protection. workflows:write because GitHub
+    # refuses an App's merge of a pull request that changes .github/workflows/ without it.
+    Verb.MERGE: _grants(
         (Permission.CONTENTS, "write"),
         (Permission.PULL_REQUESTS, "write"),
         (Permission.WORKFLOWS, "write"),

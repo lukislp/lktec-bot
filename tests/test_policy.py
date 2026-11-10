@@ -149,7 +149,7 @@ def test_undeclared_module_is_denied() -> None:
 
 
 def test_unknown_verb_is_denied() -> None:
-    decision = load_policy(VALID).allows("automerge", "merge")
+    decision = load_policy(VALID).allows("automerge", "frobnicate")
 
     assert decision.allowed is False
     assert "unknown verb" in decision.reason

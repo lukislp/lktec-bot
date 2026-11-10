@@ -15,6 +15,7 @@ from lktec_bot.ports.github_api import (
     AutoMergeNotNeeded,
     BranchUpdate,
     IssueComment,
+    MergeRefused,
     PullRequest,
     RateLimit,
     Review,
@@ -1095,3 +1096,40 @@ def test_a_plain_403_with_a_reset_header_is_not_a_rate_limit(respx_mock: respx.M
 
     assert route.call_count == 1
     assert sleeps == []
+
+
+@respx.mock(base_url=BASE)
+def test_merge_pull_request_sends_method_and_sha_and_returns_the_merge_commit(
+    api: HttpGitHubApi, respx_mock: respx.MockRouter
+) -> None:
+    route = respx_mock.put("/repos/acme/widgets/pulls/5/merge").respond(
+        200, json={"sha": "abc", "merged": True, "message": "Pull Request successfully merged"}
+    )
+
+    assert api.merge_pull_request("acme", "widgets", 5, "SQUASH", "head1") == "abc"
+    assert json.loads(route.calls[0].request.content) == {"merge_method": "squash", "sha": "head1"}
+
+
+@pytest.mark.parametrize("status", [405, 409])
+@respx.mock(base_url=BASE)
+def test_merge_pull_request_refusals_are_not_errors(
+    status: int, api: HttpGitHubApi, respx_mock: respx.MockRouter
+) -> None:
+    route = respx_mock.put("/repos/acme/widgets/pulls/5/merge").respond(
+        status, json={"message": "Head branch was modified. Review and try the merge again."}
+    )
+
+    with pytest.raises(MergeRefused, match="Head branch was modified"):
+        api.merge_pull_request("acme", "widgets", 5, "MERGE", "head1")
+
+    assert route.call_count == 1
+
+
+@respx.mock(base_url=BASE)
+def test_merge_pull_request_other_errors_stay_errors(
+    api: HttpGitHubApi, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.put("/repos/acme/widgets/pulls/5/merge").respond(403, json={"message": "nope"})
+
+    with pytest.raises(GitHubHttpError, match="403"):
+        api.merge_pull_request("acme", "widgets", 5, "REBASE", "head1")

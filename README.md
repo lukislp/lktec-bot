@@ -29,8 +29,9 @@ but the owner. lktec-bot replaces them with an App that
 - is opt-in per repository through a committed policy file,
 - holds the key in one place (the core) and hands modules only results,
 - asks for exactly one permission per verb and revokes the token when the verb is done,
-- requests the `workflows` permission for the `update-branch` verb alone and has no `merge` verb
-  (branch protection merges).
+- requests the `workflows` permission for the `update-branch` and `merge` verbs alone; the
+  `merge` verb exists only for a pull request GitHub refuses to arm because it is already
+  mergeable, and never bypasses branch protection (GitHub's auto-merge is the normal mechanism).
 
 ## Quick start
 
@@ -56,7 +57,7 @@ modules:
 ```
 
 Each module may only run the verbs registered for it (`automerge`: approve, enable-automerge,
-update-branch, comment; `lockfiles`: commit, comment; `release`: release; `sync`: commit, open-issue, check; `ping`: ping), and only the options it declares; anything else makes
+merge, update-branch, comment; `lockfiles`: commit, comment; `release`: release; `sync`: commit, open-issue, check; `ping`: ping), and only the options it declares; anything else makes
 the file invalid and denies every verb.
 
 To run a verb against a real repository, register an App ([docs/register-your-app.md](docs/register-your-app.md)),
@@ -76,7 +77,8 @@ so far).
 
 - [docs/architecture.md](docs/architecture.md): layers, the gate's decision order, the module
   registry, the verb/permission table, how a verb is added (one file), exit codes, provider
-  selection, why there is no merge verb and why only `update-branch` gets `workflows`.
+  selection, the merge verb and its limits and why only `update-branch` and `merge` get
+  `workflows`.
 - [docs/setup.md](docs/setup.md): set the bot up for your own repositories from zero, with the pitfalls.
 - [docs/register-your-app.md](docs/register-your-app.md): registering your own App from a manifest, where to
   store the key, environment variables, rotation.
@@ -94,7 +96,7 @@ so far).
 ## Verbs and actions
 
 The phase-1 verbs ship: `ping`, `comment` (with an optional marker to update the bot's own
-earlier comment instead of adding one), `approve`, `enable-automerge` and `update-branch`, and
+earlier comment instead of adding one), `approve`, `enable-automerge`, `merge` (CLI only; for pull requests GitHub will not arm) and `update-branch`, and
 `commit` (a commit on a branch that GitHub signs; CLI only so far), `release`, `open-pr`, `open-issue` (open an issue, or update the bot's own marked one) and `check` (a check run on a commit, created or updated). Each
 verb except `commit` is a CLI subcommand and a composite action under [`actions/`](actions/README.md):
 
@@ -122,8 +124,9 @@ digest refresh: routine; major: a person) and has the App approve it and enable 
 to recreate conflicting pull requests and ones with an unsigned commit (Dependabot does not take
 commands from an App). It ships as a reusable workflow
 ([`.github/workflows/automerge.yml`](.github/workflows/automerge.yml)) with a caller template
-([`templates/dependabot-auto-merge.yml`](templates/dependabot-auto-merge.yml)). The bot never
-merges: GitHub does, once the required checks are green.
+([`templates/dependabot-auto-merge.yml`](templates/dependabot-auto-merge.yml)). GitHub merges, once
+the required checks are green. The bot merges itself only with the opt-in option `merge-ready`,
+and only a pull request GitHub refused to arm because it is already mergeable.
 
 The [`lockfiles` module](docs/modules/lockfiles.md) regenerates the lock files of a Dependabot
 pull request in a job without secrets and commits them with the `commit` verb in a second job.

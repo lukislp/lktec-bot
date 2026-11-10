@@ -10,6 +10,8 @@ from dataclasses import dataclass, field, replace
 import pytest
 
 from lktec_bot.application.gate import Gate
+from lktec_bot.application.modules.automerge.classify import Eligibility
+from lktec_bot.application.modules.automerge.options import AutomergeOptions
 from lktec_bot.application.modules.automerge.service import Automerge, Decision
 from lktec_bot.application.verbs import handlers
 from lktec_bot.domain.policy import POLICY_PATH
@@ -800,7 +802,9 @@ def test_sweep_markdown_has_a_table_with_one_row_per_pull_request() -> None:
     text = env.service.sweep().to_markdown("acme/widgets")
 
     assert "### automerge sweep on `acme/widgets`" in text
-    assert "armed 1, ready 0, re-approved 0, updated 0, recreate needed 0, errors 0" in text
+    assert (
+        "armed 1, merged 0, ready 0, re-approved 0, updated 0, recreate needed 0, errors 0" in text
+    )
     assert "| #1 | dependabot\\[bot\\] | CLEAN |" in text
     assert "| #2 | dependabot\\[bot\\] | - | left for a person" in text
     assert "Warning: token not revoked" in text
@@ -813,3 +817,135 @@ def test_sweep_markdown_without_pull_requests_and_for_a_failure() -> None:
     denied = setup(pr(1), policy_text="version: 1\n").service.sweep()
 
     assert denied.to_markdown("acme/widgets").startswith("**DENIED** `automerge sweep` on")
+
+
+# -- merge-ready -----------------------------------------------------------------------------
+
+MERGE_READY = policy("merge-ready: true")
+MERGE_TOKEN = {"contents": "write", "pull_requests": "write", "workflows": "write"}
+
+
+def test_arm_merges_a_pull_request_github_will_not_arm_when_merge_ready_is_on() -> None:
+    env = setup(pr(7), policy_text=MERGE_READY)
+    env.state.auto_merge_refusals[7] = ["clean"] * 6
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.MERGED
+    assert result.exit_code == 0
+    assert result.reason == (
+        "patch update: approved, merged (already mergeable, auto-merge refused)"
+    )
+    assert result.url == "https://github.com/acme/widgets/pull/7"
+    assert result.warnings == ()
+    assert env.state.log == ["approve #7", "merge #7 squash"]
+    assert env.state.merges == [(7, "SQUASH", HEAD)]
+    assert MERGE_TOKEN in env.requests
+    assert env.state.created_comments == []
+    assert "**MERGED** `automerge arm` #7" in result.to_markdown("acme/widgets")
+
+
+def test_arm_merges_with_the_configured_method() -> None:
+    env = setup(pr(7), policy_text=policy("merge-ready: true", "method: rebase"))
+    env.state.auto_merge_refusals[7] = ["clean"] * 6
+
+    env.service.arm(7)
+
+    assert env.state.merges == [(7, "REBASE", HEAD)]
+
+
+def test_arm_without_merge_ready_never_calls_merge() -> None:
+    env = setup(pr(7), policy_text=policy("merge-ready: false"))
+    env.state.auto_merge_refusals[7] = ["clean"] * 6
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.state.merges == []
+    assert MERGE_TOKEN not in env.requests
+
+
+def test_arm_does_not_merge_what_github_armed() -> None:
+    env = setup(pr(7), policy_text=MERGE_READY)
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.ARMED
+    assert env.state.merges == []
+
+
+def test_arm_falls_back_to_ready_with_a_warning_when_the_merge_is_refused() -> None:
+    env = setup(pr(7, merge_state="UNSTABLE"), policy_text=MERGE_READY)
+    env.state.auto_merge_refusals[7] = ["unstable"] * 6
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert result.exit_code == 0
+    assert result.state == "unstable"
+    assert result.reason == "patch update: approved; already mergeable, needs a person to merge"
+    assert result.warnings == (
+        "#7: merge not done: refusing to merge: #7 is not mergeable right now (state: unstable)",
+    )
+    assert env.state.merges == []
+
+
+def test_arm_falls_back_to_ready_when_github_refuses_the_merge_call() -> None:
+    env = setup(pr(7), policy_text=MERGE_READY)
+    env.state.auto_merge_refusals[7] = ["clean"] * 6
+    env.state.merge_refusals[7] = "Head branch was modified"
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert result.warnings == (
+        "#7: merge not done: refusing to merge: GitHub says: Head branch was modified",
+    )
+
+
+def test_arm_never_merges_a_head_other_than_the_one_it_decided_on() -> None:
+    env = setup(pr(7), policy_text=MERGE_READY)
+    env.state.auto_merge_refusals[7] = ["clean"] * 6
+    # The head moves between the decision and the merge: the verb sees another head.
+    env.state.pull_requests[7] = replace(env.state.pull_requests[7], head_sha="e" * 40)
+    result = env.service._arm_verbs(
+        7,
+        AutomergeOptions.model_validate({"merge-ready": True}),
+        Eligibility(True, "patch update"),
+        (),
+        HEAD,
+        attempts=1,
+    )
+
+    assert result.decision is Decision.READY
+    assert env.state.merges == []
+    assert "not the expected" in result.warnings[0]
+
+
+def test_sweep_merges_and_counts_it_next_to_armed_and_ready() -> None:
+    env = setup(pr(1), pr(2, title=MAJOR), pr(3), pr(4), policy_text=MERGE_READY)
+    env.state.auto_merge_refusals[1] = ["clean"]
+    env.state.auto_merge_refusals[3] = ["clean"]
+    env.state.merge_refusals[3] = "not mergeable"
+
+    result = env.service.sweep()
+
+    assert (result.merged, result.ready, result.armed, result.errors) == (1, 1, 1, 0)
+    assert env.state.merges == [(1, "SQUASH", HEAD)]
+    assert result.rows[0].actions == [
+        "patch update: approved, merged (already mergeable, auto-merge refused)"
+    ]
+    assert result.rows[2].actions == ["approved; already mergeable, needs a person to merge"]
+    assert any(w.startswith("#3: merge not done:") for w in result.warnings)
+    assert [number for number, _ in env.state.created_comments] == [3]  # the hint, for #3 only
+    assert "merged 1, ready 1" in result.to_markdown("acme/widgets")
+
+
+def test_sweep_without_merge_ready_leaves_a_mergeable_pull_request_to_a_person() -> None:
+    env = setup(pr(1))
+    env.state.auto_merge_refusals[1] = ["clean"]
+
+    result = env.service.sweep()
+
+    assert (result.merged, result.ready) == (0, 1)
+    assert env.state.merges == []

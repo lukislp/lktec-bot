@@ -79,7 +79,7 @@ def register_module(
 
 register_module(
     "automerge",
-    {Verb.APPROVE, Verb.ENABLE_AUTOMERGE, Verb.UPDATE_BRANCH, Verb.COMMENT},
+    {Verb.APPROVE, Verb.ENABLE_AUTOMERGE, Verb.MERGE, Verb.UPDATE_BRANCH, Verb.COMMENT},
     AutomergeOptions,
 )
 register_module(

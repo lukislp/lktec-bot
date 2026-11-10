@@ -405,7 +405,9 @@ def automerge_arm(
 ) -> None:
     """Classify a Dependabot pull request; approve it and enable auto-merge when it is routine.
 
-    Never merges and never bypasses a rule: GitHub merges once the required checks are green.
+    Never bypasses a rule: GitHub merges once the required checks are green. Only with the
+    merge-ready option does the bot merge itself, and only a pull request GitHub would not arm
+    because it is already mergeable.
     """
     owner, repo, gate = _open_gate(repository)
     with closing(gate):
@@ -447,14 +449,16 @@ def automerge_sweep(repository: Annotated[str, REPOSITORY_OPTION]) -> None:
         say(_with_budget(f"{outcome}: {result.failure.message}", gate))
     else:
         message = (
-            f"armed {result.armed}, ready {result.ready}, re-approved {result.approved}, "
-            f"updated {result.updated}, recreate needed {result.recreated}, errors {result.errors}"
+            f"armed {result.armed}, merged {result.merged}, ready {result.ready}, "
+            f"re-approved {result.approved}, updated {result.updated}, "
+            f"recreate needed {result.recreated}, errors {result.errors}"
         )
         write_outputs(
             {
                 "result": "ok",
                 "message": message,
                 "armed": str(result.armed),
+                "merged": str(result.merged),
                 "ready": str(result.ready),
                 "updated": str(result.updated),
                 "recreated": str(result.recreated),

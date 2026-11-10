@@ -97,5 +97,8 @@ by commit SHA, not from a download: pin the SHA of a release tag and let Dependa
   file or environment variable of the operator), `*.pem` is git-ignored, and secret scanning with
   push protection is on.
 - Every verb asks for exactly one narrowed installation token and revokes it afterwards; the
-  `workflows` permission is requested by `update-branch` alone and by no other verb
-  ([architecture](docs/architecture.md#why-only-update-branch-gets-workflows)).
+  `workflows` permission is requested by `update-branch` and `merge` alone and by no other
+  verb ([architecture](docs/architecture.md#why-only-update-branch-and-merge-get-workflows)). The `merge` verb merges only a
+  pull request GitHub refused to arm because it is already mergeable, at the head the decision
+  was made on and under branch protection, never as an admin
+  ([limits](docs/architecture.md#the-merge-verb-and-its-limits)).

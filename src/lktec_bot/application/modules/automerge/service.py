@@ -4,8 +4,10 @@
 """The ``automerge`` module's commands: ``arm`` one pull request, ``sweep`` all of them.
 
 Both only read through :meth:`Gate.read` (a token narrowed to ``pull_requests:read``) and write
-through verbs (``approve``, ``enable-automerge``, ``update-branch``, ``comment``), each with its
-own narrowed token. Nothing here merges: GitHub merges once the required checks are green.
+through verbs (``approve``, ``enable-automerge``, ``merge``, ``update-branch``, ``comment``),
+each with its own narrowed token. GitHub merges once the required checks are green. The one
+exception is the ``merge-ready`` option: a pull request GitHub refuses to arm because it is
+already mergeable is merged by the ``merge`` verb, bound to the head it was decided on.
 """
 
 from __future__ import annotations
@@ -47,6 +49,7 @@ READY_HINT = (
     "lktec-bot approved this pull request, but GitHub does not enable auto-merge on a pull "
     "request that can be merged right away (state: {state}). Please merge it."
 )
+MERGED_ACTION = "approved, merged (already mergeable, auto-merge refused)"
 WHY_CONFLICT = "it conflicts with its base"
 WHY_UNSIGNED = (
     "it has a commit GitHub does not verify ({reason}), which a ruleset that requires signed "
@@ -62,6 +65,7 @@ class Decision(StrEnum):
     """The outcome of ``arm`` for one pull request."""
 
     ARMED = "armed"
+    MERGED = "merged"  # was mergeable right now, so GitHub did not arm it; the merge verb merged
     READY = "ready"  # approved, but mergeable right now: GitHub does not arm it, a person merges
     SKIPPED = "skipped"
     DENIED = "denied"
@@ -113,6 +117,7 @@ class Row:
 class SweepResult:
     rows: tuple[Row, ...] = ()
     armed: int = 0
+    merged: int = 0
     ready: int = 0
     approved: int = 0
     updated: int = 0
@@ -135,8 +140,9 @@ class SweepResult:
         lines = [
             f"### automerge sweep on `{repository}`",
             "",
-            f"armed {self.armed}, ready {self.ready}, re-approved {self.approved}, "
-            f"updated {self.updated}, recreate needed {self.recreated}, errors {self.errors}",
+            f"armed {self.armed}, merged {self.merged}, ready {self.ready}, "
+            f"re-approved {self.approved}, updated {self.updated}, "
+            f"recreate needed {self.recreated}, errors {self.errors}",
             "",
         ]
         if self.rows:
@@ -228,7 +234,9 @@ class Automerge:
                 pull_request.html_url,
                 warnings,
             )
-        return self._arm_verbs(number, assessment.options, assessment.eligibility, warnings)
+        return self._arm_verbs(
+            number, assessment.options, assessment.eligibility, warnings, pull_request.head_sha
+        )
 
     def _assess(self, api: GitHubApi, policy: Policy, number: int) -> _Assessment:
         options = _options(policy)
@@ -264,6 +272,7 @@ class Automerge:
         options: AutomergeOptions,
         eligibility: Eligibility,
         warnings: tuple[str, ...],
+        head_sha: str,
         attempts: int | None = None,
     ) -> ArmResult:
         approve = self._verb(Verb.APPROVE, number)
@@ -278,12 +287,28 @@ class Automerge:
         if enable.outputs.get("decision") == "ready":
             # GitHub does not arm a pull request that can be merged right now; the arm job is
             # green on purpose, a red check would only keep the pull request UNSTABLE.
+            carried = (*warnings, *approve.warnings, *enable.warnings)
+            if options.merge_ready:
+                merge = self._verb(
+                    Verb.MERGE, number, method=options.method, expected_head_sha=head_sha
+                )
+                carried = (*carried, *merge.warnings)
+                if merge.ok:
+                    return ArmResult(
+                        number,
+                        Decision.MERGED,
+                        f"{eligibility.reason}: {MERGED_ACTION}",
+                        merge.url or enable.url,
+                        carried,
+                    )
+                # A refusal (or a failed call) falls back to the person-merges path.
+                carried = (*carried, f"#{number}: merge not done: {merge.message}")
             return ArmResult(
                 number,
                 Decision.READY,
                 f"{eligibility.reason}: {READY_ACTION}",
                 enable.url,
-                (*warnings, *approve.warnings, *enable.warnings),
+                carried,
                 enable.outputs.get("state", ""),
             )
         reason = f"{eligibility.reason}: approved, auto-merge ({options.method}) enabled"
@@ -305,7 +330,7 @@ class Automerge:
             return SweepResult(failure=failure, warnings=read.warnings)
         survey = read.value
         rows: list[Row] = []
-        counts = {"armed": 0, "ready": 0, "approved": 0, "updated": 0, "recreated": 0}
+        counts = {"armed": 0, "merged": 0, "ready": 0, "approved": 0, "updated": 0, "recreated": 0}
         warnings = list(read.warnings)
         for entry in survey.entries:
             row = self._sweep_one(entry, survey.options, counts, warnings)
@@ -313,6 +338,7 @@ class Automerge:
         return SweepResult(
             rows=tuple(rows),
             armed=counts["armed"],
+            merged=counts["merged"],
             ready=counts["ready"],
             approved=counts["approved"],
             updated=counts["updated"],
@@ -392,8 +418,14 @@ class Automerge:
             if not eligibility.arm:
                 row.note = f"left for a person ({eligibility.reason})"
                 return row
-            armed = self._arm_verbs(number, options, eligibility, (), attempts=1)
+            armed = self._arm_verbs(
+                number, options, eligibility, (), pull_request.head_sha, attempts=1
+            )
             warnings.extend(armed.warnings)
+            if armed.decision is Decision.MERGED:
+                row.actions.append(armed.reason)
+                counts["merged"] += 1
+                return row
             if armed.decision is Decision.READY:
                 # Approved and mergeable now: nothing else to do to it, a person merges it.
                 row.actions.append(READY_ACTION)

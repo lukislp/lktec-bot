@@ -154,7 +154,7 @@ def test_sweep_prints_a_line_per_pull_request_and_writes_the_table(
     )
     assert "#9 (someone, BEHIND): updated onto its base" in result.stdout
     assert (
-        "ok: armed 1, ready 0, re-approved 0, updated 1, recreate needed 0, errors 0"
+        "ok: armed 1, merged 0, ready 0, re-approved 0, updated 1, recreate needed 0, errors 0"
         in result.stdout
     )
     assert wired.state.log == ["approve #7", "enable-automerge #7 squash", "update-branch #9"]
@@ -194,7 +194,7 @@ def test_sweep_counts_a_mergeable_pull_request_as_ready_and_not_as_an_error(
         result.stdout
     )
     assert (
-        "ok: armed 0, ready 1, re-approved 0, updated 1, recreate needed 0, errors 0"
+        "ok: armed 0, merged 0, ready 1, re-approved 0, updated 1, recreate needed 0, errors 0"
         in result.stdout
     )
     values = outputs(tmp_path)

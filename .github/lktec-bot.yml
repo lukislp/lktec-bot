@@ -10,6 +10,9 @@ modules:
     enabled: true
     majors: manual
     workflow-files: auto
+    # First adopter of the merge verb: this repository's own mergeable-now Dependabot pull
+    # requests (workflow pin bumps, all checks finished before the arm job) are merged by the bot.
+    merge-ready: true
   lockfiles:
     enabled: true
     ecosystems: [uv]

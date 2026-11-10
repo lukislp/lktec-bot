@@ -27,6 +27,7 @@ from lktec_bot.ports.github_api import (
     Issue,
     IssueComment,
     MergeMethod,
+    MergeRefused,
     PullRequest,
     PullRequestCommit,
     RateLimit,
@@ -247,6 +248,21 @@ class HttpGitHubApi:
                 raise
             raise AutoMergeNotNeeded(refused.group(1).lower()) from exc
         return _node(data, "enablePullRequestAutoMerge", "pullRequest", "url")
+
+    def merge_pull_request(
+        self, owner: str, repo: str, number: int, merge_method: MergeMethod, expected_head_sha: str
+    ) -> str:
+        try:
+            response = self._request(
+                "PUT",
+                f"/repos/{owner}/{repo}/pulls/{number}/merge",
+                json={"merge_method": merge_method.lower(), "sha": expected_head_sha},
+            )
+        except GitHubHttpError as exc:
+            if exc.status in (405, 409):
+                raise MergeRefused(str(exc)) from exc
+            raise
+        return str(response.json().get("sha", ""))
 
     def update_branch(
         self, owner: str, repo: str, number: int, expected_head_sha: str
