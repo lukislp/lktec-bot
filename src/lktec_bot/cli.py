@@ -22,11 +22,14 @@ from typer.core import TyperGroup
 from lktec_bot import __version__
 from lktec_bot.adapters._http_common import DEFAULT_BASE_URL
 from lktec_bot.adapters.app_token import AppTokenProvider
+from lktec_bot.adapters.git_workspace import DirectoryHandover, GitWorkspace
 from lktec_bot.adapters.github_http import HttpGitHubApi
 from lktec_bot.adapters.key_source import EnvKeySource
+from lktec_bot.adapters.shell_runner import ShellRunner
 from lktec_bot.application.gate import Gate, VerbRequest, VerbResult, parse_repository
 from lktec_bot.application.modules import authorize, validate_policy
 from lktec_bot.application.modules.automerge.service import Automerge, Decision
+from lktec_bot.application.modules.lockfiles.derive import Derive, DeriveDecision
 from lktec_bot.application.modules.lockfiles.service import Lockfiles
 from lktec_bot.application.modules.release.service import DEFAULT_SERVER, Release
 from lktec_bot.application.modules.sync.service import Sync
@@ -35,8 +38,9 @@ from lktec_bot.domain.permissions import Target, Verb
 from lktec_bot.domain.policy import PolicyError
 from lktec_bot.ports.github_api import GitHubApi
 from lktec_bot.ports.token_provider import TokenProvider
+from lktec_bot.ports.workspace import WorkspaceError
 from lktec_bot.summary import mask_secret, write_outputs, write_summary
-from lktec_bot.text import sanitize
+from lktec_bot.text import neutralise_commands, sanitize
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -492,11 +496,12 @@ def lockfiles_commit(
         typer.Option("--head-sha", help="The head the lock files were regenerated for."),
     ] = None,
 ) -> None:
-    """Commit the regenerated lock files that differ from a Dependabot pull request's head.
+    """Commit the regenerated files that differ from a Dependabot pull request's head.
 
     Only for open, non-draft pull requests by dependabot[bot]; only lock files with a known
-    name. The commit is made by the commit verb and signed by GitHub. Exit 0 also when there is
-    nothing to commit, 3 when the policy denies, 1 on an error (or a refused handover).
+    name and the derived files the policy of the default branch lists. Nothing handed over is
+    executed. The commit is made by the commit verb and signed by GitHub. Exit 0 also when there
+    is nothing to commit, 3 when the policy denies, 1 on an error (or a refused handover).
     """
     owner, repo, gate = _open_gate(repository)
     with closing(gate):
@@ -518,6 +523,73 @@ def lockfiles_commit(
         say(f"warning: {warning}", err=True)
     if outcome.exit_code:
         raise typer.Exit(code=outcome.exit_code)
+
+
+@lockfiles_app.command("derive")
+def lockfiles_derive(
+    trusted_ref: Annotated[
+        str,
+        typer.Option(
+            "--trusted-ref",
+            help="The default branch as the checkout knows it, e.g. origin/main: the policy "
+            "and the tree the generators run in come from its history.",
+        ),
+    ],
+    tree_dir: Annotated[
+        Path,
+        typer.Option(
+            "--tree-dir", help="Where to create the tree the generators run in (must not exist)."
+        ),
+    ],
+    changed_dir: Annotated[
+        Path,
+        typer.Option(
+            "--changed-dir",
+            help="The handover directory; derived files are added next to the lock files.",
+            file_okay=False,
+        ),
+    ],
+    workspace: Annotated[
+        Path,
+        typer.Option(
+            "--workspace",
+            help="The checkout of the pull request head.",
+            exists=True,
+            file_okay=False,
+        ),
+    ] = Path("."),
+) -> None:
+    """Generate the derived files the policy declares and add them to the handover.
+
+    For the job WITHOUT secrets: it needs no App credentials and never talks to GitHub. The
+    commands come from the policy of the default branch and run in a tree of the default
+    branch's history that carries the pull request's dependency files. Always exit 0, so a
+    failing generator never stops the lock files; the summary names the generator and the
+    reason, and the output `derived` says whether anything was handed over. Exit 2 on a usage
+    error.
+    """
+    try:
+        tree = GitWorkspace(workspace, trusted_ref, tree_dir)
+    except WorkspaceError as exc:
+        say(f"--trusted-ref: {exc}", err=True)
+        raise typer.Exit(code=EXIT_USAGE) from None
+    report = Derive(tree, ShellRunner(), DirectoryHandover(changed_dir), os.environ).run()
+    write_summary(report.to_markdown())
+    write_outputs(
+        {
+            "derived": "true" if report.handed_over else "false",
+            "decision": report.decision.value,
+            "reason": report.reason,
+        }
+    )
+    if report.output:
+        # The generator's own words, for the log only: untrusted, so never a workflow command.
+        typer.echo(neutralise_commands(os.linesep.join(report.output.splitlines())))
+    if report.decision is DeriveDecision.FAILED:
+        typer.echo(f"::warning title=lktec-bot derived files::{sanitize(report.reason)}")
+    say(f"{report.decision.value}: {report.reason}")
+    for note in report.notes:
+        say(f"note: {note}")
 
 
 @sync_app.command("commit")

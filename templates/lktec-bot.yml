@@ -29,6 +29,15 @@ modules:
     paths: []
     # One line; {number} is the pull request number.
     commit-message: "chore(deps): refresh lockfiles after Dependabot bump"
+    # Optional: files generated from the dependency graph (third-party notices, ...), regenerated
+    # in the job without secrets with the default branch's scripts and committed with the lock
+    # files. Each path exactly, nothing under .github/. Needs lktec-bot with `derived` support in
+    # EVERY caller pin of the repository first, or the whole policy is invalid (rollout order in
+    # docs/modules/lockfiles.md).
+    # derived:
+    #   - name: third-party notices
+    #     run: python3 tools/check-licences.py --update
+    #     paths: [THIRD-PARTY-NOTICES.md]
 
   # Commits generated files onto a branch through the App, e.g. the image tag bump after a
   # release (see docs/modules/sync.md). Needs the App as a bypass actor of the branch ruleset.
