@@ -10,13 +10,20 @@ name: Lockfiles (reusable)
 # referencing project's packages.lock.json), and its uv lock output has shipped unparsable files.
 # Locked-mode restores then fail on the pull request.
 #
+# source:     looks up which commit of this workflow the run uses, so that both other jobs
+#             install the bot from there. No secret, no checkout of anything.
 # regenerate: checks out the pull request head and runs the ecosystem commands. It holds NO secret
-#             (the App id and key are referenced by the other job only). It uploads the lock
-#             files that changed, and nothing else, as an artifact.
-# commit:     holds the secrets, never checks out the pull request. It downloads the artifact,
-#             treats it as untrusted (known lock file names only), compares every file with the
-#             pull request head and commits the ones that differ with the commit verb: a GraphQL
-#             createCommitOnBranch commit, signed by GitHub, with contents:write only.
+#             (the App id and key are referenced by the commit job only). When the policy of the
+#             DEFAULT branch declares `derived` generators, it then runs them (lktec-bot lockfiles
+#             derive) in a tree of the default branch's history that carries only the pull
+#             request's dependency files. It uploads the lock files and derived files that
+#             changed, and nothing else, as an artifact: data, never code.
+# commit:     holds the secrets, never checks out the pull request and executes nothing it was
+#             handed. It downloads the artifact, treats it as untrusted (known lock file names, or
+#             paths the default branch's policy lists under derived[].paths; nothing else),
+#             compares every file with the pull request head and commits the ones that differ
+#             with the commit verb: a GraphQL createCommitOnBranch commit onto exactly the head it
+#             validated, signed by GitHub, with contents:write only.
 on:
   workflow_call:
     inputs:
@@ -35,6 +42,14 @@ on:
           (3.10-3.14 on ubuntu-22.04/24.04) - anything else makes setup-python fetch it.
         type: string
         default: "3.12"
+      allowed-endpoints:
+        description: >-
+          Extra egress endpoints (host:port, separated by spaces or new lines) for the job WITHOUT
+          secrets only, on top of its fixed list: what a derived-file generator or a private
+          package feed needs, for example registry.npmjs.org:443. The job with the App key never
+          gets them.
+        type: string
+        default: ""
       bot-repository:
         description: The repository this reusable workflow lives in. Change only in a fork.
         type: string
@@ -52,7 +67,10 @@ permissions:
   actions: read # to read which commit of this workflow the run uses
 
 jobs:
-  regenerate:
+  # The bot, at the commit this workflow file was called at, for both jobs below. A reusable
+  # workflow cannot read its own repository or commit from the github context, but the run lists
+  # the workflows it references with their commit. This job runs nothing of the pull request.
+  source:
     # The PR AUTHOR, not github.actor: on a synchronize event the actor is whoever pushed last,
     # which is the bot itself after its own commit. The author never changes. A branch in a fork
     # is never touched.
@@ -61,12 +79,54 @@ jobs:
       && github.event.pull_request.draft == false
       && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      repository: ${{ steps.source.outputs.repository }}
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+      - name: Find the commit this workflow was called at
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BOT_REPOSITORY: ${{ inputs.bot-repository }}
+        run: |
+          # Only an entry of the bot's own repository counts: a caller that also references the
+          # lockfiles.yml of another repository must not make the jobs run that repository's code.
+          entry="$(gh api "repos/$RUN" | jq -r --arg repo "$BOT_REPOSITORY" '[.referenced_workflows[]? | select(.path | startswith($repo + "/.github/workflows/lockfiles.yml@"))][0] | "\(.path | split("/.github/")[0]) \(.sha)"')"
+          read -r repository sha <<< "$entry"
+          if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not tell which commit of the lockfiles workflow this run uses: $entry"
+            exit 1
+          fi
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  regenerate:
+    needs: source
+    # Only for the pull requests the source job ran for (the same condition).
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]'
+      && github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # The lock files, plus at most 15 minutes of derived-file generators (the policy caps them).
+    timeout-minutes: 35
     # No secret is referenced anywhere in this job, and its token can read the repository only.
     permissions:
       contents: read
     outputs:
-      changed: ${{ steps.collect.outputs.changed }}
+      changed: ${{ steps.handover.outputs.changed }}
     env:
       # uv must never download an interpreter from python-build-standalone: that is an
       # external fetch on every single run. The runner's tool cache already ships the version
@@ -93,14 +153,30 @@ jobs:
             raw.githubusercontent.com:443
             release-assets.githubusercontent.com:443
             results-receiver.actions.githubusercontent.com:443
+            ${{ inputs.allowed-endpoints }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The head COMMIT the event describes, so a push that lands later cannot change what
           # is regenerated; the commit job refuses a pull request that has moved on.
           ref: ${{ github.event.pull_request.head.sha }}
-          # Full history so the base branch's uv.lock is available locally.
+          # Full history so the base branch's uv.lock, and the default branch's policy and tree
+          # for derived files, are available locally.
           fetch-depth: 0
           persist-credentials: false
+      # Read before any code of the pull request runs. Only a cheap pre-check that spares the
+      # bot's installation to repositories that declare no generator: `lktec-bot lockfiles
+      # derive` parses and validates the policy itself, and the commit job admits derived files
+      # only against the policy it reads through the API.
+      - name: Does the default branch's policy declare derived files
+        id: wants
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if git show "origin/$DEFAULT_BRANCH:.github/lktec-bot.yml" 2>/dev/null | grep -qw derived; then
+            echo "derived=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "derived=false" >> "$GITHUB_OUTPUT"
+          fi
       - if: inputs.dotnet-version != '' && hashFiles('**/packages.lock.json') != ''
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
@@ -262,7 +338,48 @@ jobs:
           if [ "$changed" != true ]; then
             echo "lock files already consistent"
           fi
-      - if: steps.collect.outputs.changed == 'true'
+      # Derived files (docs/modules/lockfiles.md, "Derived files"). The steps below may fail
+      # without failing the job: the lock files collected above are handed over either way, and
+      # the derive command writes to the job summary why it handed over no derived file. It adds
+      # either all of the generators' files to the handover or none.
+      - if: steps.wants.outputs.derived == 'true'
+        id: bot
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.source.outputs.repository }}
+          ref: ${{ needs.source.outputs.sha }}
+          path: .lktec-bot
+          persist-credentials: false
+      - if: steps.bot.outcome == 'success'
+        id: setup
+        continue-on-error: true
+        uses: ./.lktec-bot/actions/setup
+      - if: steps.setup.outcome == 'success'
+        id: derive
+        name: Generate the derived files the default branch's policy declares
+        continue-on-error: true
+        env:
+          TRUSTED_REF: origin/${{ github.event.repository.default_branch }}
+          HANDOVER: ${{ runner.temp }}/handover
+          TREE: ${{ runner.temp }}/derived-tree
+        run: |
+          lktec-bot lockfiles derive \
+            --trusted-ref "$TRUSTED_REF" \
+            --tree-dir "$TREE" \
+            --changed-dir "$HANDOVER"
+      - id: handover
+        name: Anything to hand over
+        env:
+          LOCKFILES: ${{ steps.collect.outputs.changed }}
+          DERIVED: ${{ steps.derive.outputs.derived }}
+        run: |
+          if [ "$LOCKFILES" = true ] || [ "$DERIVED" = true ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.handover.outputs.changed == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lockfiles-handover
@@ -273,13 +390,14 @@ jobs:
           retention-days: 1
 
   commit:
-    needs: regenerate
+    needs: [source, regenerate]
     if: needs.regenerate.outputs.changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Unchanged from before derived files, minus actions:read (the source job looks the commit
+    # up now). No new trigger, no new permission.
     permissions:
       contents: read
-      actions: read
     # One commit at a time per pull request; a second run waits for the first.
     concurrency:
       group: lockfiles-commit-${{ github.repository }}-${{ github.event.pull_request.number }}
@@ -302,31 +420,13 @@ jobs:
             raw.githubusercontent.com:443
             release-assets.githubusercontent.com:443
             results-receiver.actions.githubusercontent.com:443
-      # The bot, at the commit this workflow file was called at. NOT the pull request: this job
-      # runs on pull_request_target with secrets and must never see the pull request's code.
-      # A reusable workflow cannot read its own repository or commit from the github context,
-      # but the run lists the workflows it references with their commit.
-      - name: Find the commit this workflow was called at
-        id: source
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN: ${{ github.repository }}/actions/runs/${{ github.run_id }}
-          BOT_REPOSITORY: ${{ inputs.bot-repository }}
-        run: |
-          # Only an entry of the bot's own repository counts: a caller that also references the
-          # lockfiles.yml of another repository must not make this job run that repository's code.
-          entry="$(gh api "repos/$RUN" | jq -r --arg repo "$BOT_REPOSITORY" '[.referenced_workflows[]? | select(.path | startswith($repo + "/.github/workflows/lockfiles.yml@"))][0] | "\(.path | split("/.github/")[0]) \(.sha)"')"
-          read -r repository sha <<< "$entry"
-          if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::could not tell which commit of the lockfiles workflow this run uses: $entry"
-            exit 1
-          fi
-          echo "repository=$repository" >> "$GITHUB_OUTPUT"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # The bot, at the commit this workflow file was called at (from the source job, which ran
+      # nothing of the pull request). NOT the pull request: this job runs on pull_request_target
+      # with secrets and must never see the pull request's code, nor run anything it is handed.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ steps.source.outputs.repository }}
-          ref: ${{ steps.source.outputs.sha }}
+          repository: ${{ needs.source.outputs.repository }}
+          ref: ${{ needs.source.outputs.sha }}
           path: .lktec-bot
           persist-credentials: false
       - uses: ./.lktec-bot/actions/setup
@@ -334,7 +434,7 @@ jobs:
         with:
           name: lockfiles-handover
           path: ${{ runner.temp }}/handover
-      - name: Commit the regenerated lock files
+      - name: Commit the regenerated lock files and derived files
         env:
           LKTEC_BOT_APP_ID: ${{ secrets.app-id }}
           LKTEC_BOT_PRIVATE_KEY: ${{ secrets.private-key }}

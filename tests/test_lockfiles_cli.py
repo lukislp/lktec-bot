@@ -109,7 +109,7 @@ def test_lockfiles_commit_refuses_an_unknown_file_with_exit_1(wired: Wired, tmp_
     result = run_commit(handed)
 
     assert result.exit_code == 1
-    assert "not the name of a known lock file" in result.stdout
+    assert "neither a known lock file" in result.stdout
     assert outputs(tmp_path)["result"] == "error"
 
 

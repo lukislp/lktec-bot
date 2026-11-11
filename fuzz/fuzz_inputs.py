@@ -7,7 +7,12 @@ Contract under test: ``load_policy`` turns any YAML text into a ``Policy`` or ra
 ``PolicyError`` (never a raw YAML or validation error); ``parse_commit`` turns any commit
 message into a Conventional Commit or ``None``, with a breaking commit always carrying its
 notes; ``parse_version`` accepts only the canonical ``X.Y.Z`` form, which ``format_version``
-reproduces exactly, and ``version_of_tag`` never raises. Anything else is a finding.
+reproduces exactly, and ``version_of_tag`` never raises; ``validate_policy`` (the registry
+check on top, which validates the ``derived`` generators of the lock file module) raises
+nothing but ``PolicyError``; a ``derived`` entry built from fuzzed text is accepted or refused
+with a ``ValidationError``, an accepted path is a plain repository path outside ``.github/``,
+and the allow-list admits no path that is neither a lock file name nor a declared one.
+Anything else is a finding.
 
 Run locally (Linux, needs the atheris wheel):
     uv sync --locked --group fuzz
@@ -21,13 +26,19 @@ import contextlib
 import sys
 
 import atheris
+from pydantic import ValidationError
 
+from lktec_bot.application.modules import validate_policy
+from lktec_bot.application.modules.lockfiles.allowlist import admit
+from lktec_bot.application.modules.lockfiles.ecosystems import ecosystem_of
+from lktec_bot.application.modules.lockfiles.options import LockfilesOptions
 from lktec_bot.application.modules.release.commits import (
     format_version,
     parse_commit,
     parse_version,
     version_of_tag,
 )
+from lktec_bot.domain.paths import repo_path_problem
 from lktec_bot.domain.policy import PolicyError, load_policy
 from lktec_bot.ports.github_api import CommitInfo
 
@@ -37,6 +48,36 @@ def test_one_input(data: bytes) -> None:
 
     with contextlib.suppress(PolicyError):
         load_policy(fdp.ConsumeUnicodeNoSurrogates(256))
+
+    with contextlib.suppress(PolicyError):
+        validate_policy(fdp.ConsumeUnicodeNoSurrogates(256))
+
+    declared = fdp.ConsumeUnicodeNoSurrogates(48)
+    entry = {
+        "name": fdp.ConsumeUnicodeNoSurrogates(16),
+        "run": fdp.ConsumeUnicodeNoSurrogates(32),
+        "paths": [declared],
+    }
+    try:
+        options = LockfilesOptions.model_validate({"derived": [entry]})
+    except ValidationError:
+        options = LockfilesOptions()
+    else:
+        lowered = declared.lower()
+        if (
+            repo_path_problem(declared) is not None
+            or lowered == ".github"
+            or lowered.startswith(".github/")
+            or ecosystem_of(declared) is not None
+        ):
+            raise AssertionError(f"derived path {declared!r} was accepted")
+    path = fdp.ConsumeUnicodeNoSurrogates(48) if fdp.ConsumeBool() else declared
+    verdict = admit(path, fdp.ConsumeIntInRange(0, 1 << 30), options)
+    if not verdict.refused and (
+        repo_path_problem(path) is not None
+        or (ecosystem_of(path) is None and path not in options.derived_paths())
+    ):
+        raise AssertionError(f"admit({path!r}) = {verdict!r}")
 
     message = fdp.ConsumeUnicodeNoSurrogates(256)
     commit = parse_commit(CommitInfo("a" * 40, message))

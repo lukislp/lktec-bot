@@ -29,6 +29,9 @@ jobs:
       dotnet-version: "10.0.x"
       # uv-version: "0.12.24"
       # python-version: "3.12"
+      # Extra egress for the job without secrets only, when a derived-file generator of the
+      # policy needs it (docs/modules/lockfiles.md, "Derived files"), e.g. the npm registry:
+      # allowed-endpoints: registry.npmjs.org:443
     secrets:
       app-id: ${{ secrets.LKTEC_BOT_APP_ID }}
       private-key: ${{ secrets.LKTEC_BOT_PRIVATE_KEY }}

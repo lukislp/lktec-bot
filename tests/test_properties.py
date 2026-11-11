@@ -12,7 +12,14 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from lktec_bot.application.gate import parse_repository, validate_name
-from lktec_bot.domain.paths import WORKFLOWS_DIR, repo_path_problem
+from lktec_bot.application.modules.lockfiles.allowlist import admit
+from lktec_bot.application.modules.lockfiles.ecosystems import ecosystem_of
+from lktec_bot.application.modules.lockfiles.options import LockfilesOptions
+from lktec_bot.domain.paths import (
+    WORKFLOWS_DIR,
+    generated_path_problem,
+    repo_path_problem,
+)
 from lktec_bot.text import escape_markdown, neutralise_commands, sanitize
 
 
@@ -27,6 +34,38 @@ def test_an_accepted_repository_path_is_plain_relative_and_outside_workflows(pat
     assert all(segment.lower() != ".git" for segment in segments)
     assert not path.lower().startswith(WORKFLOWS_DIR)
     assert not any(ord(char) < 0x20 or ord(char) == 0x7F for char in path)
+
+
+# Text made of the characters paths are built from, so the rules are reached far more often
+# than with arbitrary text.
+_PATH_TEXT = st.text(alphabet=st.sampled_from("abAB01._-/@+ *?[]{}=$~:\\\n"), max_size=24)
+_DECLARED = "THIRD-PARTY-NOTICES.md"
+_OPTIONS = LockfilesOptions.model_validate(
+    {"derived": [{"name": "notices", "run": "make notices", "paths": [_DECLARED]}]}
+)
+
+
+@given(st.one_of(st.text(), _PATH_TEXT))
+def test_an_accepted_generated_path_is_one_exact_file_outside_dot_github(path: str) -> None:
+    if generated_path_problem(path) is not None:
+        return
+    assert repo_path_problem(path) is None
+    assert not any(char in path for char in "*?[]{}")
+    assert path.lower() != ".github"
+    assert not path.lower().startswith(".github/")
+    assert all(char.isascii() and (char.isalnum() or char in "._/@+ -") for char in path)
+
+
+@given(st.one_of(st.text(), _PATH_TEXT), st.integers(min_value=0, max_value=1 << 40))
+def test_the_allow_list_admits_only_lock_file_names_and_the_declared_path(
+    path: str, size: int
+) -> None:
+    verdict = admit(path, size, _OPTIONS)
+    if verdict.refused:
+        assert verdict.problem
+        return
+    assert repo_path_problem(path) is None
+    assert ecosystem_of(path) is not None or path == _DECLARED
 
 
 @given(st.text(alphabet=st.characters(blacklist_categories=["Cs"])))
@@ -77,7 +116,9 @@ def test_escaped_markdown_stays_on_one_line(text: str) -> None:
 
 
 def _anchored_validators() -> list[tuple[str, re.Pattern[str]]]:
+    from lktec_bot.adapters import git_workspace
     from lktec_bot.application.modules import _handover
+    from lktec_bot.application.modules.lockfiles import options as lockfiles_options
     from lktec_bot.application.modules.release import commits as release_commits
     from lktec_bot.application.modules.release import options as release_options
     from lktec_bot.application.modules.sync import options as sync_options
@@ -89,6 +130,8 @@ def _anchored_validators() -> list[tuple[str, re.Pattern[str]]]:
 
     candidates = {
         "_handover._SAFE_PATH": _handover._SAFE_PATH,
+        "git_workspace._REF": git_workspace._REF,
+        "lockfiles.options._GENERATOR_NAME": lockfiles_options._GENERATOR_NAME,
         "commits._VERSION": release_commits._VERSION,
         "release.options._SEMVER": release_options._SEMVER,
         "release.options._TAG_TEXT": release_options._TAG_TEXT,

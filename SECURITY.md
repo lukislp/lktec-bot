@@ -55,7 +55,9 @@ or leak the private key or a token through logs, summaries or error messages; th
 actions, reusable workflows and templates, and the release workflow of this repository.
 
 The policy file lives in the target repository and is read on every run, so a pull request that
-changes it is a change to what the bot may do. Review such changes like code.
+changes it is a change to what the bot may do. Review such changes like code: a `derived[].run`
+entry of the `lockfiles` module is a shell command the reusable workflow runs (in its job without
+secrets), and its `paths` are files the bot will then commit onto Dependabot pull requests.
 
 **Out of scope here:** vulnerabilities in GitHub itself, in a dependency (Dependabot tracks
 those; report them upstream), and findings that need an already compromised runner, repository

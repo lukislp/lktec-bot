@@ -131,9 +131,12 @@ and only a pull request GitHub refused to arm because it is already mergeable.
 The [`lockfiles` module](docs/modules/lockfiles.md) regenerates the lock files of a Dependabot
 pull request in a job without secrets and commits them with the `commit` verb in a second job.
 The commit is created through GraphQL `createCommitOnBranch`, so GitHub signs it: no personal
-access token and no signing key. Reusable workflow
-([`.github/workflows/lockfiles.yml`](.github/workflows/lockfiles.yml)) and caller template
-([`templates/dependabot-lockfiles.yml`](templates/dependabot-lockfiles.yml)).
+access token and no signing key. Optionally (`derived` in the policy) the same run regenerates
+files the repository derives from its dependency graph, such as third-party notices: the
+generators come from the default branch's policy and run only in the job without secrets, and
+the commit job admits nothing but lock files and the exact paths the policy lists. Reusable
+workflow ([`.github/workflows/lockfiles.yml`](.github/workflows/lockfiles.yml)) and caller
+template ([`templates/dependabot-lockfiles.yml`](templates/dependabot-lockfiles.yml)).
 
 The [`release` module](docs/modules/release.md) replaces semantic-release and its per-repository
 SSH deploy key: `lktec-bot release run` works out the next version from the Conventional Commits

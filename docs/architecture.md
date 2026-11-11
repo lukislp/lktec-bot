@@ -11,21 +11,26 @@ src/lktec_bot/
   domain/        pure models and decisions - no I/O, no environment, no GitHub
     policy.py        shape of .github/lktec-bot.yml (version, modules, enabled), Decision
     permissions.py   Verb, Permission, the canonical verb -> permission table
-    paths.py         which repository paths the bot may write (no absolute, no .., no workflows)
+    paths.py         which repository paths the bot may write (no absolute, no .., no workflows),
+                     and which a policy may declare as generated (exact, never under .github/)
   ports/         protocols the application layer talks to
     github_api.py    GitHubApi (get_file_content, create_review, enable_auto_merge, create_commit_on_branch, ..., close)
     token_provider.py TokenProvider.token_for(owner, repo, permissions) -> Token, TokenError
     key_source.py    KeySource.load() -> AppCredentials (app id + private key PEM)
+    workspace.py     SourceTree, CommandRunner, HandoverSink for `lockfiles derive` (no GitHub)
   adapters/      implementations of the ports
     _http_common.py  base URL, API version, User-Agent, header builder shared by both clients
     github_http.py   httpx REST + GraphQL client with the retry policy described below
     app_token.py     RS256 App JWT -> installation lookup -> narrowed installation token
     key_source.py    EnvKeySource (LKTEC_BOT_APP_ID / LKTEC_BOT_PRIVATE_KEY[_FILE]), FileKeySource
+    git_workspace.py GitWorkspace (the merge-base tree for generators), DirectoryHandover
+    shell_runner.py  ShellRunner: bash with a timeout, for the generators of the job without secrets
   application/   the gate, the module registry and the verbs
     gate.py          Gate.run(VerbRequest) -> VerbResult; Gate.read for module reads; owner/repo validation
     modules/         module registry (__init__.py): name -> allowed verbs + options model; authorize()
       automerge/     the automerge module: options.py, classify.py (pure), service.py (arm, sweep)
-      lockfiles/     the lockfiles module: options.py, ecosystems.py (pure), service.py (commit)
+      lockfiles/     the lockfiles module: options.py, ecosystems.py, allowlist.py (pure),
+                     service.py (commit), derive.py (derive, in the job without secrets)
       release/       the release module: options.py, commits.py, notes.py (pure), service.py (run)
       sync/          the sync module: options.py (pure), service.py (commit)
       _handover.py   the handover directory (manifest.txt + files/) shared by lockfiles and sync
@@ -137,7 +142,7 @@ repository enables a module; the registry bounds what an enabled module may do:
 | Module      | Verbs                                              | Options                                      |
 | ----------- | -------------------------------------------------- | -------------------------------------------- |
 | `automerge` | `approve`, `enable-automerge`, `update-branch`, `comment` | `majors: manual \| auto`, `exclude: [str]`, `workflow-files: auto \| manual`, `method: squash \| merge \| rebase` (see [modules/automerge.md](modules/automerge.md)) |
-| `lockfiles` | `commit`, `comment`                                | `ecosystems: [uv \| dotnet]`, `paths: [str]`, `commit-message: str` (see [modules/lockfiles.md](modules/lockfiles.md)) |
+| `lockfiles` | `commit`, `comment`                                | `ecosystems: [uv \| dotnet]`, `paths: [str]`, `commit-message: str`, `derived: [{name, run, paths, timeout-minutes}]` (see [modules/lockfiles.md](modules/lockfiles.md)) |
 | `release`   | `release`                                          | `mode: tag`, `tag-format: str`, `branch: str`, `first-version: str`, `rules: [{type, scope, breaking, release}]`, `sections: {type: heading}` (see [modules/release.md](modules/release.md)) |
 | `sync`      | `commit`                                         | `paths: [str]` (required), `branch: str`, `commit-message: str` (see [modules/sync.md](modules/sync.md)) |
 | `ping`      | `ping`                                             | none                                         |
