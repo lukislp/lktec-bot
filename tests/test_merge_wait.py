@@ -14,6 +14,7 @@ from lktec_bot.domain.merge_wait import (
     needs_check_tally,
     tally_checks,
     wait_reason,
+    workflow_run_id,
 )
 
 RUNNING = CheckTally(pending=2, pending_names=("a", "b"))
@@ -105,3 +106,18 @@ def test_the_wait_ends_when_the_request_budget_is_low() -> None:
     assert give_up_reason(bounds, 0, 499) == "the request budget is low (499 left)"
     assert give_up_reason(bounds, 0, 500) is None
     assert give_up_reason(bounds, 0, None) is None  # not reported yet: no reason to stop
+
+
+@pytest.mark.parametrize(
+    ("url", "run_id"),
+    [
+        ("https://github.com/a/b/actions/runs/43054008858/job/130638495457", 43054008858),
+        ("https://github.com/a/b/actions/runs/7", 7),
+        ("https://github.com/a/b/runs/130638457917", None),
+        ("https://socket.dev/dashboard/org/x", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_workflow_run_id_comes_from_the_details_url(url: str | None, run_id: int | None) -> None:
+    assert workflow_run_id(url) == run_id

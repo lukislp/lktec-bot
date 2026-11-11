@@ -34,6 +34,7 @@ from lktec_bot.domain.merge_wait import (
     needs_check_tally,
     tally_checks,
     wait_reason,
+    workflow_run_id,
 )
 from lktec_bot.domain.permissions import Target, Verb
 from lktec_bot.domain.policy import Policy
@@ -44,6 +45,7 @@ MODULE = "automerge"
 READ_PERMISSIONS = {"pull_requests": "read"}
 # The look at a pull request that is waited for also reads its check runs.
 WAIT_READ_PERMISSIONS = {"pull_requests": "read", "checks": "read"}
+UNSTABLE = "UNSTABLE"
 MAX_NAMED = 5  # check names listed in the log line when the wait starts
 # Dependabot takes commands only from people with push access: a comment by a GitHub App
 # gets "Sorry, only users with push access can use that command." So the sweep cannot ask
@@ -184,6 +186,7 @@ class _Look:
 
     assessment: _Assessment
     checks: CheckTally | None
+    own_pending: bool = False  # this job's own check run is the unfinished one
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +227,7 @@ class Automerge:
         clock: Callable[[], float] = time.monotonic,
         wait: WaitBounds | None = None,
         log: Callable[[str], None] | None = None,
+        own_run_id: int | None = None,
     ) -> None:
         self._gate = gate
         self._owner = owner
@@ -232,6 +236,7 @@ class Automerge:
         self._poll_attempts = max(1, poll_attempts)
         self._poll_interval = poll_interval
         self._clock = clock
+        self._own_run_id = own_run_id
         self._wait = WaitBounds() if wait is None else wait
         self._log = log or (lambda _line: None)
 
@@ -402,6 +407,13 @@ class Automerge:
                 else None
             )
             if reason is None:
+                if look.own_pending and pull_request.merge_state.upper() == UNSTABLE:
+                    # Nothing else is running: GitHub keeps the state unstable only for this
+                    # job's own check run, which cannot end before the job does.
+                    self._log(
+                        f"#{number}: only this job's own check run is unfinished; "
+                        "not waiting for it, the next sweep merges"
+                    )
                 result = self._merge_verb(number, assessment.options, head_sha)
                 if polls:
                     outcome = "merged" if result.ok else f"not merged: {result.message}"
@@ -427,7 +439,20 @@ class Automerge:
         checks = None
         if assessment.eligibility.arm and needs_check_tally(pull_request.merge_state):
             runs = api.list_head_check_runs(self._owner, self._repo, pull_request.head_sha)
-            checks = tally_checks((run.name, run.status, run.conclusion) for run in runs)
+            # This job's own check run is on the pull request head and unfinished by definition;
+            # waiting for it would only burn the budget. Other runs count.
+            others = [
+                run
+                for run in runs
+                if self._own_run_id is None or workflow_run_id(run.details_url) != self._own_run_id
+            ]
+            own_pending = any(
+                tally_checks([(run.name, run.status, run.conclusion)]).pending
+                for run in runs
+                if run not in others
+            )
+            checks = tally_checks((run.name, run.status, run.conclusion) for run in others)
+            return _Look(assessment, checks, own_pending)
         return _Look(assessment, checks)
 
     def _gave_up(self, number: int, polls: int, elapsed: float, why: str) -> VerbResult:

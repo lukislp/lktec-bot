@@ -433,7 +433,12 @@ def automerge_arm(
     owner, repo, gate = _open_gate(repository)
     bounds = replace(DEFAULT_WAIT, budget=wait_seconds, interval=wait_interval)
     with closing(gate):
-        result = Automerge(gate, owner, repo, wait=bounds, log=say).arm(number)
+        own_run_id = (
+            int(run_id) if (run_id := os.environ.get("GITHUB_RUN_ID", "")).isdigit() else None
+        )
+        result = Automerge(gate, owner, repo, wait=bounds, log=say, own_run_id=own_run_id).arm(
+            number
+        )
     write_summary(result.to_markdown(f"{owner}/{repo}"))
     overall = {Decision.DENIED: "denied", Decision.ERROR: "error"}.get(result.decision, "ok")
     write_outputs(

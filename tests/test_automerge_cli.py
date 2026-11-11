@@ -314,3 +314,23 @@ def test_arm_wait_seconds_zero_turns_the_wait_off(
     assert result.exit_code == 0, result.output
     assert "waiting up to" not in result.stdout
     assert wired.state.merges == []
+
+
+def test_arm_passes_the_run_id_so_the_own_check_run_is_not_waited_for(
+    wired: Wired, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ready_but_unstable(wired, monkeypatch)
+    head = wired.state.pull_requests[7].head_sha
+    wired.state.check_runs[head] = [
+        CheckRun(
+            1, "https://x/1", "automerge / arm", "in_progress", None,
+            "https://github.com/acme/widgets/actions/runs/555/job/1", None, None, None, 1, "ci",
+        )
+    ]  # fmt: skip
+    monkeypatch.setenv("GITHUB_RUN_ID", "555")
+
+    result = runner.invoke(app, ["automerge", "arm", "-R", "acme/widgets", "--number", "7"])
+
+    assert result.exit_code == 0, result.output
+    assert "only this job's own check run is unfinished" in result.stdout
+    assert "waiting up to" not in result.stdout

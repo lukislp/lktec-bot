@@ -18,6 +18,7 @@ unreadable one) needs somebody to act and is never waited for. The wait is bound
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -30,6 +31,20 @@ _UNFINISHED = frozenset({"queued", "in_progress", "waiting", "pending", "request
 _FAILED = frozenset(
     {"failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"}
 )
+
+
+_RUN_URL = re.compile(r"/actions/runs/(\d+)(?:/|$)")
+
+
+def workflow_run_id(details_url: str | None) -> int | None:
+    """The Actions workflow run a check run belongs to, from its ``details_url``, or ``None``.
+
+    A check run of a ``pull_request_target`` job is attached to the pull request head, so the
+    job that is about to merge is itself an unfinished check run of that head. Its run id
+    (``GITHUB_RUN_ID``) identifies it reliably; its name does not.
+    """
+    match = _RUN_URL.search(details_url or "")
+    return int(match.group(1)) if match else None
 
 
 @dataclass(frozen=True, slots=True)

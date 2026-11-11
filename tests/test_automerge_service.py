@@ -95,6 +95,7 @@ class Setup:
     clock: Clock = field(default_factory=Clock)
     logs: list[str] = field(default_factory=list)
     wait: WaitBounds | None = None
+    own_run_id: int | None = None
 
     @property
     def sleeps(self) -> list[float]:
@@ -114,6 +115,7 @@ class Setup:
             clock=self.clock,
             wait=self.wait,
             log=self.logs.append,
+            own_run_id=self.own_run_id,
         )
 
     @property
@@ -1002,14 +1004,16 @@ def test_sweep_without_merge_ready_leaves_a_mergeable_pull_request_to_a_person()
 WAIT_TOKEN = {"pull_requests": "read", "checks": "read"}
 
 
-def run(name: str, status: str, conclusion: str | None = None) -> CheckRun:
+def run(
+    name: str, status: str, conclusion: str | None = None, details_url: str | None = None
+) -> CheckRun:
     return CheckRun(
         id=sum(map(ord, name)),
         html_url="https://github.com/acme/widgets/runs/1",
         name=name,
         status=status,
         conclusion=conclusion,
-        details_url=None,
+        details_url=details_url,
         title=None,
         summary=None,
         text=None,
@@ -1308,3 +1312,80 @@ def test_sweep_never_waits_for_a_ready_pull_request() -> None:
     assert env.sleeps == []
     assert env.calls("list_head_check_runs") == []
     assert env.state.merges == []
+
+
+# The timeline of lukislp/studylife-developers #201 (2026-11-11): every other check of the head
+# had finished, the arm job's own check run (a pull_request_target job is attached to the pull
+# request head) was the only one still running, so GitHub reported the state as unstable.
+OWN = "https://github.com/acme/widgets/actions/runs/555/job/9"
+OTHER = "https://github.com/acme/widgets/actions/runs/444/job/3"
+
+
+def issue_201_checks() -> list[CheckRun]:
+    return [
+        run("CodeQL", "completed", "neutral"),
+        run("review / dependency-review", "completed", "success", OTHER),
+        run("lockfiles / regenerate", "completed", "success", OTHER),
+        run("build-and-test", "completed", "success", OTHER),
+        run("automerge / sweep", "completed", "skipped", OWN),
+        run("automerge / arm", "in_progress", None, OWN),
+    ]
+
+
+def test_arm_does_not_wait_for_its_own_check_run() -> None:
+    env = waiting(checks=issue_201_checks())
+    env.own_run_id = 555
+
+    result = env.service.arm(7)
+
+    # Waiting could never help: the run ends with the job. No budget is burnt, the pull request
+    # is left ready (the hourly sweep merges it), and the log says why.
+    assert result.decision is Decision.READY
+    assert env.sleeps == []
+    assert env.state.merges == []
+    assert env.logs == [
+        "#7: only this job's own check run is unfinished; not waiting for it, the next sweep merges"
+    ]
+
+
+def test_the_sweep_after_the_arm_job_ended_merges_the_pull_request() -> None:
+    env = waiting(checks=issue_201_checks())
+    env.own_run_id = 555
+    env.service.arm(7)
+    assert env.state.merges == []
+
+    # The arm job is over: its check run is complete and the state turned clean. The sweep (a
+    # run attached to the default branch) merges it, bound to the approved head.
+    env.state.check_runs[HEAD] = [run("automerge / arm", "completed", "success", OWN)]
+    change(env, merge_state="CLEAN")()
+    env.state.auto_merge_refusals[7] = ["clean"]
+    result = env.service.sweep()
+
+    assert result.merged == 1
+    assert env.state.merges == [(7, "SQUASH", HEAD)]
+
+
+def test_arm_waits_for_other_checks_but_not_for_its_own_and_hands_over_at_the_end() -> None:
+    env = waiting(checks=[run("CodeQL", "in_progress", None, OTHER), *issue_201_checks()[-1:]])
+    env.own_run_id = 555
+
+    def codeql_done() -> None:
+        env.state.check_runs[HEAD] = issue_201_checks()
+
+    env.clock.script = [codeql_done]
+
+    result = env.service.arm(7)
+
+    # One wait for CodeQL; then only the own run is left: hand over at once, no 10-minute burn.
+    assert result.decision is Decision.READY
+    assert env.sleeps == [30.0]
+    assert env.logs[0].startswith("#7: ready but not clean yet (unstable; pending: CodeQL)")
+    assert any("own check run" in line for line in env.logs)
+
+
+def test_arm_without_a_run_id_counts_every_unfinished_run() -> None:
+    env = waiting(checks=issue_201_checks())
+
+    env.service.arm(7)
+
+    assert env.sleeps == [30.0] * 20  # why the own run has to be told apart

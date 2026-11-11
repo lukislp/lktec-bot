@@ -99,6 +99,15 @@ again:
   waited for: the module reports `ready` as before. Only check runs are read (the App has
   `checks`, not `statuses`); a legacy commit status that is still pending is not seen, and the
   pull request then falls back to the sweep as before.
+- **The job's own check run is not waited for.** A `pull_request_target` job is attached to the
+  pull request head (verified on a real pull request: the `automerge / arm` check run sits on
+  the head next to CI), so while `arm` runs, GitHub counts its own unfinished run and reports
+  `unstable` even when everything else is done. That run cannot end before the job does, so the
+  wait ignores every check run of this workflow run (`GITHUB_RUN_ID`, matched against the check
+  run's `details_url`, not by name), and when only it is left the wait ends at once with the
+  log line `only this job's own check run is unfinished; not waiting for it, the next sweep
+  merges`. The pull request is then `ready` as before and the next `sweep` (a run attached to the
+  default branch) merges it. The wait therefore only helps when *other* checks are still running.
 - **Bounds:** looks every 30 seconds for at most 10 minutes (20 sleeps). The wait stops early when
   the installation's remaining request budget (logged as "rate limit remaining") falls below
   500 of its 5,000 per hour. Each look costs about 6 requests (policy file, pull request, check
