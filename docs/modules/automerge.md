@@ -83,6 +83,46 @@ both pass it). The result is `merged` with the reason `<eligibility>: approved, 
 mergeable, auto-merge refused)`, and the sweep counts it under `merged`, next to `armed` and
 `ready`. With `merge-ready: false` (the default) nothing changes: `ready`, plus the hint.
 
+##### Waiting for a pull request that is ready but not clean yet
+
+The required checks are done, so GitHub will not arm auto-merge, but checks that are *not*
+required can still be running: the state is then `unstable`, and the `merge` verb (which merges
+only `clean`) would refuse. Nothing wakes the bot when those checks finish, so before this
+change such a pull request waited for the hourly sweep. Now `arm` (not the sweep) waits and looks
+again:
+
+- **What is waited for** (one pure rule, `domain/merge_wait.py`): `unknown` (GitHub is still
+  computing the state), and `unstable` while at least one check run of the head commit is still
+  queued or running and none has failed. A failed non-required check keeps the state `unstable`
+  for good, so a single failed check ends the wait; so does an `unstable` state with nothing
+  running. `dirty`, `blocked`, `behind`, `draft`, `has_hooks` and anything else are never
+  waited for: the module reports `ready` as before. Only check runs are read (the App has
+  `checks`, not `statuses`); a legacy commit status that is still pending is not seen, and the
+  pull request then falls back to the sweep as before.
+- **Bounds:** looks every 30 seconds for at most 10 minutes (20 sleeps). The wait stops early when
+  the installation's remaining request budget (logged as "rate limit remaining") falls below
+  500 of its 5,000 per hour. Each look costs about 6 requests (policy file, pull request, check
+  runs, two token revocations; minting uses the App's own budget), so a full wait is at most
+  about 130 requests, 2.6 % of the hourly budget, for the rare pull request that needs it.
+  `--wait-seconds` (default 600; `0` turns the wait off) and `--wait-interval` (default 30)
+  change the bounds of one run; there is no policy option, so every repository gets the
+  defaults and no policy file needs to change.
+- **Everything is checked again, after the wait:** every look is a fresh read, never a carried-over
+  decision. It runs the module's own eligibility check again (open, not a draft, a Dependabot
+  pull request, `majors`, `exclude`, `workflow-files`, and `merge-ready` still on in the policy
+  file on the default branch). A moved head ends the wait (and the verb then refuses it, as it
+  is not the head that was approved). When nothing is left to wait for, the very same `merge` verb
+  runs as without a wait, and re-checks the open state, the head (it also sends it as `sha`), `clean`, and
+  the App's approval on that head. Never an admin merge.
+- **Logging:** one line when the wait starts (`#7: ready but not clean yet (unstable; pending:
+  CodeQL); waiting up to 600s, looking every 30s`) and one when it ends (`#7: wait ended after
+  120s: merged`, or `not merged (<why>)`). When the wait ends without a merge the result is
+  `ready` with the reason as a warning, exactly like a refusal without a wait.
+- **The sweep never waits:** it already runs hourly over many pull requests and must not
+  block on one; it keeps merging what is `clean` at that moment.
+- **Token:** the looks read with `pull_requests: read` and `checks: read` (the App manifest
+  already carries `checks`); no write permission is added.
+
 The `merge` verb checks everything again right before it merges and refuses on any doubt: the
 pull request is open and not a draft; its head is the expected one (also sent as `sha`, so a
 push in between fails at GitHub); GitHub's `mergeable_state` is `clean` (not `unstable`,
@@ -175,6 +215,7 @@ the gate with its own token, narrowed to one repository:
 | ---------------------------- | ---------------------------------------- |
 | policy (every call)          | `contents: read`                         |
 | reading pull requests, files | `pull_requests: read`                    |
+| waiting for checks (`merge-ready` only) | `pull_requests: read` + `checks: read` |
 | `approve`                    | `pull_requests: write`                   |
 | `enable-automerge`           | `contents: write` + `pull_requests: write` |
 | `merge` (`merge-ready` only) | `contents: write` + `pull_requests: write` + `workflows: write` |

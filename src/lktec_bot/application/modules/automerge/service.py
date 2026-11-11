@@ -27,6 +27,14 @@ from lktec_bot.application.modules.automerge.classify import (
     touches_workflow_files,
 )
 from lktec_bot.application.modules.automerge.options import AutomergeOptions
+from lktec_bot.domain.merge_wait import (
+    CheckTally,
+    WaitBounds,
+    give_up_reason,
+    needs_check_tally,
+    tally_checks,
+    wait_reason,
+)
 from lktec_bot.domain.permissions import Target, Verb
 from lktec_bot.domain.policy import Policy
 from lktec_bot.ports.github_api import GitHubApi, PullRequest
@@ -34,6 +42,9 @@ from lktec_bot.text import escape_markdown
 
 MODULE = "automerge"
 READ_PERMISSIONS = {"pull_requests": "read"}
+# The look at a pull request that is waited for also reads its check runs.
+WAIT_READ_PERMISSIONS = {"pull_requests": "read", "checks": "read"}
+MAX_NAMED = 5  # check names listed in the log line when the wait starts
 # Dependabot takes commands only from people with push access: a comment by a GitHub App
 # gets "Sorry, only users with push access can use that command." So the sweep cannot ask
 # for a rebuild itself; it leaves one hint per head that tells a maintainer what to do.
@@ -167,6 +178,15 @@ class _Assessment:
 
 
 @dataclass(frozen=True, slots=True)
+class _Look:
+    """A fresh look at a pull request that is waited for: the same assessment as for arming,
+    plus the tally of its head's check runs when the state calls for it."""
+
+    assessment: _Assessment
+    checks: CheckTally | None
+
+
+@dataclass(frozen=True, slots=True)
 class _Entry:
     pull_request: PullRequest  # as of the survey, with ``merge_state`` when it was needed
     eligibility: Eligibility | None  # Dependabot pull requests only
@@ -201,6 +221,9 @@ class Automerge:
         sleep: Callable[[float], None] = time.sleep,
         poll_attempts: int = 6,
         poll_interval: float = 10.0,
+        clock: Callable[[], float] = time.monotonic,
+        wait: WaitBounds | None = None,
+        log: Callable[[str], None] | None = None,
     ) -> None:
         self._gate = gate
         self._owner = owner
@@ -208,6 +231,9 @@ class Automerge:
         self._sleep = sleep
         self._poll_attempts = max(1, poll_attempts)
         self._poll_interval = poll_interval
+        self._clock = clock
+        self._wait = WaitBounds() if wait is None else wait
+        self._log = log or (lambda _line: None)
 
     # -- arm -------------------------------------------------------------------------------
 
@@ -234,8 +260,15 @@ class Automerge:
                 pull_request.html_url,
                 warnings,
             )
+        # Only ``arm`` waits for a pull request that is ready but not clean yet: it runs once per
+        # pull request event. The sweep covers many pull requests and must not block on one.
         return self._arm_verbs(
-            number, assessment.options, assessment.eligibility, warnings, pull_request.head_sha
+            number,
+            assessment.options,
+            assessment.eligibility,
+            warnings,
+            pull_request.head_sha,
+            wait=True,
         )
 
     def _assess(self, api: GitHubApi, policy: Policy, number: int) -> _Assessment:
@@ -274,6 +307,7 @@ class Automerge:
         warnings: tuple[str, ...],
         head_sha: str,
         attempts: int | None = None,
+        wait: bool = False,
     ) -> ArmResult:
         approve = self._verb(Verb.APPROVE, number)
         if not approve.ok:
@@ -289,9 +323,7 @@ class Automerge:
             # green on purpose, a red check would only keep the pull request UNSTABLE.
             carried = (*warnings, *approve.warnings, *enable.warnings)
             if options.merge_ready:
-                merge = self._verb(
-                    Verb.MERGE, number, method=options.method, expected_head_sha=head_sha
-                )
+                merge = self._merge(number, options, head_sha, wait=wait)
                 carried = (*carried, *merge.warnings)
                 if merge.ok:
                     return ArmResult(
@@ -319,6 +351,92 @@ class Automerge:
             enable.url,
             (*warnings, *approve.warnings, *enable.warnings),
         )
+
+    # -- merge (after GitHub refused to arm) --------------------------------------------------
+
+    def _merge_verb(self, number: int, options: AutomergeOptions, head_sha: str) -> VerbResult:
+        """The one place that merges: the verb re-checks everything itself (head, approval,
+        ``clean``, open and not a draft) and is bound to ``head_sha``."""
+        return self._verb(Verb.MERGE, number, method=options.method, expected_head_sha=head_sha)
+
+    def _merge(
+        self, number: int, options: AutomergeOptions, head_sha: str, *, wait: bool
+    ) -> VerbResult:
+        """Merge, after waiting a bounded time while the state is one that clears by itself.
+
+        Every pass starts from a fresh read (policy, eligibility, head, state, checks), never
+        from what was known before the wait, and a pass that does not wait ends in the same
+        ``merge`` verb as without a wait. A state that does not clear by itself or a moved head
+        ends the waiting and the verb answers as it always did; a policy that no longer allows
+        the merge ends it with a refusal.
+        """
+        if not wait or not self._wait.enabled:
+            return self._merge_verb(number, options, head_sha)
+        started = self._clock()
+        polls = 0
+        while True:
+            read = self._gate.read(
+                self._owner,
+                self._repo,
+                MODULE,
+                WAIT_READ_PERMISSIONS,
+                lambda api, policy: self._look(api, policy, number),
+            )
+            elapsed = self._clock() - started
+            if read.failure is not None or read.value is None:
+                failure = read.failure or VerbResult(VerbOutcome.ERROR, "nothing was read")
+                return self._gave_up(
+                    number, polls, elapsed, f"it could not be read again: {failure.message}"
+                )
+            look = read.value
+            assessment = look.assessment
+            if not assessment.eligibility.arm:
+                why = f"it is no longer eligible: {assessment.eligibility.reason}"
+                return self._gave_up(number, polls, elapsed, why)
+            if not assessment.options.merge_ready:
+                return self._gave_up(number, polls, elapsed, "merge-ready is no longer enabled")
+            pull_request = assessment.pull_request
+            reason = (
+                wait_reason(pull_request.merge_state, look.checks)
+                if pull_request.head_sha == head_sha
+                else None
+            )
+            if reason is None:
+                result = self._merge_verb(number, assessment.options, head_sha)
+                if polls:
+                    outcome = "merged" if result.ok else f"not merged: {result.message}"
+                    self._log(f"#{number}: wait ended after {elapsed:.0f}s: {outcome}")
+                return result
+            rate = self._gate.last_rate_limit
+            stop = give_up_reason(self._wait, elapsed, rate.remaining if rate else None)
+            if stop is not None:
+                state = pull_request.merge_state.lower()
+                return self._gave_up(number, polls, elapsed, f"is still {state} ({reason}); {stop}")
+            if polls == 0:
+                started_line = _wait_started(
+                    number, pull_request.merge_state, look.checks, self._wait
+                )
+                self._log(started_line)
+            polls += 1
+            self._sleep(self._wait.interval)
+
+    def _look(self, api: GitHubApi, policy: Policy, number: int) -> _Look:
+        """The reader of one pass: the arming assessment, and the checks of an unstable head."""
+        assessment = self._assess(api, policy, number)
+        pull_request = assessment.pull_request
+        checks = None
+        if assessment.eligibility.arm and needs_check_tally(pull_request.merge_state):
+            runs = api.list_head_check_runs(self._owner, self._repo, pull_request.head_sha)
+            checks = tally_checks((run.name, run.status, run.conclusion) for run in runs)
+        return _Look(assessment, checks)
+
+    def _gave_up(self, number: int, polls: int, elapsed: float, why: str) -> VerbResult:
+        """The merge is not attempted: report it like the verb reports a refusal."""
+        message = f"refusing to merge: #{number} {why}"
+        if polls:
+            self._log(f"#{number}: wait ended after {elapsed:.0f}s: not merged ({why})")
+            message += f" (waited {elapsed:.0f}s)"
+        return VerbResult(VerbOutcome.ERROR, message, outputs={"decision": "refused"})
 
     # -- sweep -----------------------------------------------------------------------------
 
@@ -548,6 +666,20 @@ class Automerge:
         return self._gate.run(
             VerbRequest(self._owner, self._repo, MODULE, verb, args={"number": number, **args})
         )
+
+
+def _wait_started(
+    number: int, merge_state: str, checks: CheckTally | None, bounds: WaitBounds
+) -> str:
+    detail = merge_state.lower() or "unknown"
+    if checks is not None and checks.pending_names:
+        named = ", ".join(checks.pending_names[:MAX_NAMED])
+        more = len(checks.pending_names) - MAX_NAMED
+        detail += f"; pending: {named}" + (f" and {more} more" if more > 0 else "")
+    return (
+        f"#{number}: ready but not clean yet ({detail}); waiting up to {bounds.budget:.0f}s, "
+        f"looking every {bounds.interval:.0f}s"
+    )
 
 
 def _options(policy: Policy) -> AutomergeOptions:

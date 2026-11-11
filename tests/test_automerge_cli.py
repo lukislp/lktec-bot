@@ -15,7 +15,7 @@ from lktec_bot.application.gate import Gate
 from lktec_bot.application.verbs import handlers
 from lktec_bot.cli import app
 from lktec_bot.domain.policy import POLICY_PATH
-from lktec_bot.ports.github_api import RateLimit
+from lktec_bot.ports.github_api import CheckRun, RateLimit
 from lktec_bot.summary import mask_secret
 from tests.fakes import FakeApiFactory, FakeRepository, FakeTokenProvider
 from tests.test_automerge_service import MAJOR, PATCH, POLICY, pr
@@ -260,3 +260,57 @@ def test_the_rate_limit_suffix_is_left_out_when_unknown(wired: Wired) -> None:
     result = runner.invoke(app, ["automerge", "sweep", "-R", "acme/widgets"])
 
     assert "rate limit" not in result.stdout
+
+
+def ready_but_unstable(wired: Wired, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pull request 7 is routine, GitHub refuses to arm it and a check is still running."""
+    wired.state.pull_requests[7] = pr(7, title=PATCH, merge_state="UNSTABLE")
+    wired.state.auto_merge_refusals[7] = ["unstable"] * 6
+    wired.state.check_runs[wired.state.pull_requests[7].head_sha] = [
+        CheckRun(1, "https://x/1", "CodeQL", "in_progress", None, None, None, None, None, 1, "ci")
+    ]
+    merge_ready = POLICY + "    merge-ready: true\n"
+    factory = FakeApiFactory({POLICY_PATH: merge_ready}, wired.state)
+    monkeypatch.setattr(
+        "lktec_bot.cli.build_gate", lambda env=None: Gate(wired.tokens, factory, handlers())
+    )
+
+
+def test_arm_logs_the_wait_and_how_it_ended(wired: Wired, monkeypatch: pytest.MonkeyPatch) -> None:
+    ready_but_unstable(wired, monkeypatch)
+    monkeypatch.setattr(
+        "lktec_bot.application.modules.automerge.service.time.sleep", lambda _: None
+    )
+    ticks = iter(range(0, 1000, 1))
+    monkeypatch.setattr(
+        "lktec_bot.application.modules.automerge.service.time.monotonic", lambda: next(ticks)
+    )
+
+    result = runner.invoke(
+        app,
+        ["automerge", "arm", "-R", "acme/widgets", "--number", "7", "--wait-seconds", "3",
+         "--wait-interval", "1"],
+    )  # fmt: skip
+
+    assert result.exit_code == 0, result.output
+    assert (
+        "#7: ready but not clean yet (unstable; pending: CodeQL); waiting up to 3s" in result.stdout
+    )
+    assert "#7: wait ended after" in result.stdout
+    assert "ready: patch update: approved; already mergeable" in result.stdout
+    assert "merge not done" in result.stderr
+    assert "ghs_" not in result.output
+
+
+def test_arm_wait_seconds_zero_turns_the_wait_off(
+    wired: Wired, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ready_but_unstable(wired, monkeypatch)
+
+    result = runner.invoke(
+        app, ["automerge", "arm", "-R", "acme/widgets", "--number", "7", "--wait-seconds", "0"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "waiting up to" not in result.stdout
+    assert wired.state.merges == []

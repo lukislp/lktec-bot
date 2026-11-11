@@ -12,6 +12,7 @@ src/lktec_bot/
     policy.py        shape of .github/lktec-bot.yml (version, modules, enabled), Decision
     permissions.py   Verb, Permission, the canonical verb -> permission table
     paths.py         which repository paths the bot may write (no absolute, no .., no workflows)
+    merge_wait.py    which not-clean merge states are worth waiting for, and the bounds of the wait
   ports/         protocols the application layer talks to
     github_api.py    GitHubApi (get_file_content, create_review, enable_auto_merge, create_commit_on_branch, ..., close)
     token_provider.py TokenProvider.token_for(owner, repo, permissions) -> Token, TokenError
@@ -158,7 +159,7 @@ whose service (the part that drives the gate) only the command line imports.
 A module that decides *what* to do needs to read before it writes (which pull requests exist,
 what they change). It does that through `Gate.read(owner, repo, module, permissions, reader)`:
 the module must be known and enabled in the policy, the reader gets a client bound to a token
-narrowed to exactly `permissions` (`pull_requests: read` for `automerge`, plus `contents: read` for `lockfiles`, `contents: read` for `release` and `sync`; scope-checked and
+narrowed to exactly `permissions` (`pull_requests: read` for `automerge`, plus `checks: read` while it waits for a ready pull request, plus `contents: read` for `lockfiles`, `contents: read` for `release` and `sync`; scope-checked and
 revoked like a verb token) plus the validated policy to read its own options, and nothing it
 does may write. Every write is a verb and goes through `Gate.run`, each with its own narrowed
 token, so a module command never holds more than one permission at a time and the permission
@@ -265,6 +266,16 @@ The limits are part of the design:
   `ready` path (hint comment) with the refusal as a warning; a refusal never turns the job red.
 - **Needs `workflows`.** GitHub refuses an App's merge of a pull request that changes
   `.github/workflows/` without the `workflows` permission, and those are the main case.
+
+- **A bounded wait, decided in the domain.** When the pull request is ready but not `clean`
+  because non-required checks are still running (`unstable`) or GitHub is still computing
+  (`unknown`), the `arm` command looks again every 30 seconds for up to 10 minutes. Which
+  states are worth waiting for and when to stop (budget, request budget) are pure rules in
+  `domain/merge_wait.py`; the loop is `Automerge._merge` in the application layer with the
+  clock and sleep injected; the check runs come through the `GitHubApi` port
+  (`list_head_check_runs`). Each look re-reads the policy, the eligibility and the state, and
+  the merge is still done only by the `merge` verb, which re-checks head, approval and `clean`.
+  The sweep does not wait. See [modules/automerge.md](modules/automerge.md).
 
 Residual risk: a leaked App key could already merge through auto-merge. The verb adds no new
 capability beyond merging without waiting for GitHub's auto-merge, and that merge is still bound

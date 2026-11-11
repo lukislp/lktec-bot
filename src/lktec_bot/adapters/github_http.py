@@ -450,6 +450,14 @@ class HttpGitHubApi:
         )
         return [_check_run(entry) for entry in entries]
 
+    def list_head_check_runs(self, owner: str, repo: str, sha: str) -> list[CheckRun]:
+        entries = self._paginate(
+            f"/repos/{owner}/{repo}/commits/{sha}/check-runs",
+            {"filter": "latest"},
+            key="check_runs",
+        )
+        return [_check_run(entry) for entry in entries]
+
     def create_check_run(
         self,
         owner: str,

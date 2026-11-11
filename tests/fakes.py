@@ -343,6 +343,10 @@ class FakeGitHubApi:
         self.calls.append(("list_check_runs", (owner, repo, sha, name)))
         return [run for run in self.state.check_runs.get(sha, []) if run.name == name]
 
+    def list_head_check_runs(self, owner: str, repo: str, sha: str) -> list[CheckRun]:
+        self.calls.append(("list_head_check_runs", (owner, repo, sha)))
+        return list(self.state.check_runs.get(sha, []))
+
     def create_check_run(
         self,
         owner: str,

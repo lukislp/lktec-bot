@@ -324,6 +324,10 @@ class GitHubApi(Protocol):
         """Every check run called ``name`` on commit ``sha``, of any App, every page fetched."""
         ...
 
+    def list_head_check_runs(self, owner: str, repo: str, sha: str) -> Sequence[CheckRun]:
+        """Every (latest) check run on commit ``sha``, whatever its name or App, every page."""
+        ...
+
     def create_check_run(
         self,
         owner: str,

@@ -327,3 +327,23 @@ def test_update_check_run_is_not_retried_on_5xx_and_maps_404(
 
     assert flaky.call_count == 1
     assert excinfo.value.status == 404
+
+
+@respx.mock(base_url=BASE)
+def test_list_head_check_runs_reads_every_run_of_the_head_across_pages(
+    api: HttpGitHubApi, respx_mock: respx.MockRouter
+) -> None:
+    route = respx_mock.get(RUNS)
+    route.side_effect = [
+        httpx.Response(
+            200, json={"total_count": 101, "check_runs": [payload(i) for i in range(100)]}
+        ),
+        httpx.Response(200, json={"total_count": 101, "check_runs": [payload(100)]}),
+    ]
+
+    runs = api.list_head_check_runs("acme", "widgets", SHA)
+
+    assert [entry.id for entry in runs] == list(range(101))
+    params = route.calls[0].request.url.params
+    assert "check_name" not in params
+    assert params["filter"] == "latest"

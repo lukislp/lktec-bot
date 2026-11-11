@@ -13,6 +13,7 @@ import inspect
 import os
 from collections.abc import Mapping
 from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -31,6 +32,7 @@ from lktec_bot.application.modules.lockfiles.service import Lockfiles
 from lktec_bot.application.modules.release.service import DEFAULT_SERVER, Release
 from lktec_bot.application.modules.sync.service import Sync
 from lktec_bot.application.verbs import Option, VerbSpec, handlers, load_verbs
+from lktec_bot.domain.merge_wait import WaitBounds
 from lktec_bot.domain.permissions import Target, Verb
 from lktec_bot.domain.policy import PolicyError
 from lktec_bot.ports.github_api import GitHubApi
@@ -377,6 +379,7 @@ for _spec in load_verbs().values():
 # holds no token of its own.
 
 REPOSITORY_OPTION = typer.Option("--repository", "-R", help="Target repository as owner/name.")
+DEFAULT_WAIT = WaitBounds()
 
 
 def _with_budget(line: str, gate: Gate) -> str:
@@ -402,16 +405,35 @@ def _open_gate(repository: str) -> tuple[str, str, Gate]:
 def automerge_arm(
     number: Annotated[int, typer.Option("--number", help="Pull request number.", min=1)],
     repository: Annotated[str, REPOSITORY_OPTION],
+    wait_seconds: Annotated[
+        float,
+        typer.Option(
+            "--wait-seconds",
+            help="With merge-ready: the longest to wait for a ready pull request that is not "
+            "clean yet (non-required checks still running). 0 turns the wait off.",
+            min=0,
+        ),
+    ] = DEFAULT_WAIT.budget,
+    wait_interval: Annotated[
+        float,
+        typer.Option(
+            "--wait-interval",
+            help="Seconds between two looks while waiting.",
+            min=1,
+        ),
+    ] = DEFAULT_WAIT.interval,
 ) -> None:
     """Classify a Dependabot pull request; approve it and enable auto-merge when it is routine.
 
     Never bypasses a rule: GitHub merges once the required checks are green. Only with the
     merge-ready option does the bot merge itself, and only a pull request GitHub would not arm
-    because it is already mergeable.
+    because it is already mergeable; when that pull request is not clean yet only because
+    checks that are not required are still running, it waits a bounded time for them first.
     """
     owner, repo, gate = _open_gate(repository)
+    bounds = replace(DEFAULT_WAIT, budget=wait_seconds, interval=wait_interval)
     with closing(gate):
-        result = Automerge(gate, owner, repo).arm(number)
+        result = Automerge(gate, owner, repo, wait=bounds, log=say).arm(number)
     write_summary(result.to_markdown(f"{owner}/{repo}"))
     overall = {Decision.DENIED: "denied", Decision.ERROR: "error"}.get(result.decision, "ok")
     write_outputs(

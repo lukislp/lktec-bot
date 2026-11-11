@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from typing import Any, cast
 
 import pytest
 
@@ -14,8 +16,15 @@ from lktec_bot.application.modules.automerge.classify import Eligibility
 from lktec_bot.application.modules.automerge.options import AutomergeOptions
 from lktec_bot.application.modules.automerge.service import Automerge, Decision
 from lktec_bot.application.verbs import handlers
+from lktec_bot.domain.merge_wait import WaitBounds
 from lktec_bot.domain.policy import POLICY_PATH
-from lktec_bot.ports.github_api import PullRequest, PullRequestCommit, Review
+from lktec_bot.ports.github_api import (
+    CheckRun,
+    PullRequest,
+    PullRequestCommit,
+    RateLimit,
+    Review,
+)
 from tests.fakes import BOT, FakeApiFactory, FakeRepository, FakeTokenProvider
 
 DEPENDABOT = "dependabot[bot]"
@@ -58,17 +67,54 @@ def pr(
     )
 
 
+class Clock:
+    """A clock that only moves when the code under test sleeps; ``script[i]`` runs after the
+    i-th sleep (0-based), to change what GitHub reports while the bot waits."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+        self.script: list[Callable[[], None]] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+        self.sleeps.append(seconds)
+        index = len(self.sleeps) - 1
+        if index < len(self.script):
+            self.script[index]()
+
+
 @dataclass
 class Setup:
     state: FakeRepository
     tokens: FakeTokenProvider
     factory: FakeApiFactory
-    sleeps: list[float] = field(default_factory=list)
+    clock: Clock = field(default_factory=Clock)
+    logs: list[str] = field(default_factory=list)
+    wait: WaitBounds | None = None
+
+    @property
+    def sleeps(self) -> list[float]:
+        return self.clock.sleeps
+
+    def set_policy(self, text: str) -> None:
+        cast(dict[str, str], self.factory.files)[POLICY_PATH] = text
 
     @property
     def service(self) -> Automerge:
         gate = Gate(self.tokens, self.factory, handlers())
-        return Automerge(gate, "acme", "widgets", sleep=self.sleeps.append)
+        return Automerge(
+            gate,
+            "acme",
+            "widgets",
+            sleep=self.clock.sleep,
+            clock=self.clock,
+            wait=self.wait,
+            log=self.logs.append,
+        )
 
     @property
     def requests(self) -> list[dict[str, str]]:
@@ -948,4 +994,317 @@ def test_sweep_without_merge_ready_leaves_a_mergeable_pull_request_to_a_person()
     result = env.service.sweep()
 
     assert (result.merged, result.ready) == (0, 1)
+    assert env.state.merges == []
+
+
+# -- waiting for a ready pull request that is not clean yet ---------------------------------
+
+WAIT_TOKEN = {"pull_requests": "read", "checks": "read"}
+
+
+def run(name: str, status: str, conclusion: str | None = None) -> CheckRun:
+    return CheckRun(
+        id=sum(map(ord, name)),
+        html_url="https://github.com/acme/widgets/runs/1",
+        name=name,
+        status=status,
+        conclusion=conclusion,
+        details_url=None,
+        title=None,
+        summary=None,
+        text=None,
+        app_id=1,
+        app_slug="ci",
+    )
+
+
+def waiting(state: str = "UNSTABLE", checks: list[CheckRun] | None = None, **changes: Any) -> Setup:
+    """A routine pull request GitHub refuses to arm, in ``state`` with ``checks`` on its head."""
+    env = setup(pr(7, merge_state=state, **changes), policy_text=MERGE_READY)
+    env.state.auto_merge_refusals[7] = [state.lower()] * 6
+    env.state.check_runs[HEAD] = (
+        [run("CodeQL", "in_progress"), run("test", "completed", "success")]
+        if checks is None
+        else checks
+    )
+    return env
+
+
+def change(env: Setup, **fields: Any) -> Callable[[], None]:
+    def apply() -> None:
+        env.state.pull_requests[7] = replace(env.state.pull_requests[7], **fields)
+
+    return apply
+
+
+def checks_finish(env: Setup) -> Callable[[], None]:
+    def apply() -> None:
+        env.state.check_runs[HEAD] = [run("CodeQL", "completed", "success")]
+        change(env, merge_state="CLEAN")()
+
+    return apply
+
+
+def test_arm_waits_for_non_required_checks_and_then_merges() -> None:
+    env = waiting()
+    env.clock.script = [lambda: None, checks_finish(env)]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.MERGED
+    assert env.sleeps == [30.0, 30.0]
+    assert env.state.merges == [(7, "SQUASH", HEAD)]
+    assert env.state.log == ["approve #7", "merge #7 squash"]
+    assert WAIT_TOKEN in env.requests
+    assert env.logs == [
+        "#7: ready but not clean yet (unstable; pending: CodeQL); waiting up to 600s, "
+        "looking every 30s",
+        "#7: wait ended after 60s: merged",
+    ]
+
+
+def test_arm_waits_while_github_computes_the_merge_state() -> None:
+    env = waiting("UNKNOWN", checks=[])
+    env.clock.script = [change(env, merge_state="CLEAN")]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.MERGED
+    assert env.sleeps == [30.0]
+    assert env.logs[0].startswith("#7: ready but not clean yet (unknown); waiting up to 600s")
+    # The checks are read for an unstable state only.
+    assert env.calls("list_head_check_runs") == []
+
+
+def test_arm_does_not_wait_when_no_check_is_running() -> None:
+    env = waiting(checks=[run("test", "completed", "success")])
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == []
+    assert env.logs == []
+    assert result.warnings == (
+        "#7: merge not done: refusing to merge: #7 is not mergeable right now (state: unstable)",
+    )
+
+
+def test_arm_does_not_wait_when_a_check_has_failed_already() -> None:
+    env = waiting(checks=[run("CodeQL", "in_progress"), run("lint", "completed", "failure")])
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == []
+    assert env.state.merges == []
+
+
+@pytest.mark.parametrize("state", ["DIRTY", "BLOCKED", "BEHIND", "DRAFT", "HAS_HOOKS", ""])
+def test_arm_never_waits_for_a_state_that_does_not_clear_by_itself(state: str) -> None:
+    env = waiting(state, checks=[run("CodeQL", "in_progress")])
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == []
+    assert env.calls("list_head_check_runs") == []
+    assert env.state.merges == []
+
+
+def test_arm_stops_waiting_when_a_check_fails_during_the_wait() -> None:
+    env = waiting()
+    env.clock.script = [
+        lambda: env.state.check_runs.update({HEAD: [run("CodeQL", "completed", "failure")]})
+    ]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == [30.0]
+    assert env.state.merges == []
+    assert result.warnings == (
+        "#7: merge not done: refusing to merge: #7 is not mergeable right now (state: unstable)",
+    )
+    assert env.logs[-1].startswith("#7: wait ended after 30s: not merged")
+
+
+def test_arm_does_not_merge_a_head_that_moved_during_the_wait() -> None:
+    env = waiting()
+    env.clock.script = [change(env, head_sha="e" * 40, merge_state="CLEAN")]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == [30.0]
+    assert env.state.merges == []
+    assert "not the expected" in result.warnings[0]
+
+
+def test_arm_does_not_keep_waiting_for_checks_of_a_head_that_moved() -> None:
+    env = waiting()
+    env.clock.script = [change(env, head_sha="e" * 40)]  # still unstable, new head, new checks
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == [30.0]
+    assert env.state.merges == []
+
+
+def test_arm_does_not_merge_when_the_approval_is_dismissed_during_the_wait() -> None:
+    env = waiting()
+
+    def dismiss() -> None:
+        env.state.reviews[7] = [Review(BOT, "DISMISSED", HEAD, "https://github.com/x#r1")]
+        change(env, merge_state="CLEAN")()
+
+    env.clock.script = [dismiss]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.state.merges == []
+    assert "has not approved #7" in result.warnings[0]
+
+
+@pytest.mark.parametrize("state", ["DIRTY", "BLOCKED", "BEHIND"])
+def test_arm_does_not_merge_when_the_state_turns_bad_during_the_wait(state: str) -> None:
+    env = waiting()
+    env.clock.script = [change(env, merge_state=state)]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == [30.0]  # no second wait
+    assert env.state.merges == []
+    assert f"(state: {state.lower()})" in result.warnings[0]
+
+
+def test_arm_does_not_merge_when_the_pull_request_is_no_longer_routine() -> None:
+    env = waiting()
+    env.clock.script = [change(env, title=MAJOR, merge_state="CLEAN")]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.state.merges == []
+    assert "no longer eligible" in result.warnings[0]
+    assert "major" in result.warnings[0]
+
+
+def test_arm_does_not_merge_when_the_pull_request_is_closed_during_the_wait() -> None:
+    env = waiting()
+    env.clock.script = [change(env, state="closed", merge_state="CLEAN")]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.state.merges == []
+    assert "no longer eligible" in result.warnings[0]
+
+
+def test_arm_does_not_merge_when_merge_ready_is_switched_off_during_the_wait() -> None:
+    env = waiting()
+
+    def switch_off() -> None:
+        env.set_policy(policy("merge-ready: false"))
+        change(env, merge_state="CLEAN")()
+
+    env.clock.script = [switch_off]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.state.merges == []
+    assert "merge-ready is no longer enabled" in result.warnings[0]
+
+
+def test_arm_gives_up_when_the_wait_budget_is_used_up() -> None:
+    env = waiting()
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == [30.0] * 20  # 600 s in all; a 21st sleep would pass the budget
+    assert len(env.calls("list_head_check_runs")) == 21
+    assert env.state.merges == []
+    assert "the wait budget of 600s is used up" in result.warnings[0]
+    assert "(waited 600s)" in result.warnings[0]
+    assert env.logs[-1].startswith("#7: wait ended after 600s: not merged")
+
+
+def test_arm_honours_custom_bounds() -> None:
+    env = waiting()
+    env.wait = WaitBounds(budget=90, interval=20)
+
+    env.service.arm(7)
+
+    assert env.sleeps == [20.0] * 4  # the 5th look is at 80 s; one more would pass 90 s
+
+
+def test_arm_stops_waiting_when_the_request_budget_is_low() -> None:
+    env = waiting()
+    env.factory.last_rate_limit = RateLimit(remaining=120)
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == []
+    assert "the request budget is low (120 left)" in result.warnings[0]
+    assert env.state.merges == []
+
+
+def test_arm_keeps_waiting_when_the_request_budget_is_ample() -> None:
+    env = waiting()
+    env.factory.last_rate_limit = RateLimit(remaining=4000)
+    env.clock.script = [checks_finish(env)]
+
+    assert env.service.arm(7).decision is Decision.MERGED
+
+
+def test_arm_with_the_wait_turned_off_refuses_at_once() -> None:
+    env = waiting()
+    env.wait = WaitBounds(budget=0)
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == []
+    assert env.calls("list_head_check_runs") == []
+
+
+def test_arm_without_merge_ready_never_waits() -> None:
+    env = waiting()
+    env.set_policy(POLICY)
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.sleeps == []
+    assert env.calls("list_head_check_runs") == []
+
+
+def test_arm_reports_a_wait_that_cannot_read_the_pull_request_again() -> None:
+    env = waiting()
+
+    def vanish() -> None:
+        del env.state.pull_requests[7]
+
+    env.clock.script = [vanish]
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.READY
+    assert env.state.merges == []
+    assert "could not be read again" in result.warnings[0]
+
+
+def test_sweep_never_waits_for_a_ready_pull_request() -> None:
+    env = waiting()
+
+    result = env.service.sweep()
+
+    assert (result.merged, result.ready) == (0, 1)
+    assert env.sleeps == []
+    assert env.calls("list_head_check_runs") == []
     assert env.state.merges == []

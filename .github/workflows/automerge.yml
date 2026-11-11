@@ -8,7 +8,9 @@ name: Automerge (reusable)
 #        a person; see docs/modules/automerge.md); a routine one is approved by the App and gets
 #        auto-merge enabled. GitHub merges once the required checks are green, under
 #        the repository's own rules. Only with the policy option merge-ready does the bot merge
-#        a pull request GitHub refused to arm because it is already mergeable.
+#        a pull request GitHub refused to arm because it is already mergeable; when only
+#        non-required checks are still running it waits for them, at most 10 minutes (see
+#        docs/modules/automerge.md), which is why the job's timeout is longer than its work.
 # sweep: hourly and on every push to the default branch. Arms routine Dependabot pull requests
 #        that were missed, updates behind branches (auto-merge enabled, or opened by a person),
 #        and leaves a hint for a maintainer to recreate a conflicting pull request (Dependabot
@@ -45,10 +47,15 @@ jobs:
       && github.event.action != 'auto_merge_enabled'
       && github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Setup and the arm retries take about 2 minutes; with merge-ready the job may then wait up
+    # to 10 minutes (the bot's own bound) for non-required checks. 20 leaves headroom.
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
+    # A newer event for the same pull request waits for this run (one run is kept pending, a
+    # still newer one replaces it). A run is not cancelled in the middle of approving, arming
+    # or merging. A waiting run notices a pushed head within one look (30 s) and ends.
     concurrency:
       group: automerge-arm-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
