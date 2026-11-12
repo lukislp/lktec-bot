@@ -34,7 +34,7 @@ dev = [
 ]
 # Fuzzing harness (fuzz/), Linux only - the atheris wheel does not exist for Windows.
 fuzz = [
-    "atheris==3.0.0",
+    "atheris==3.1.0",
 ]
 # The build backend, locked like everything else so that the composite actions can install
 # the package with ``uv pip install --no-build-isolation`` after exporting uv.lock with hashes
