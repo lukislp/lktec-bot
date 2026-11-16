@@ -11,8 +11,10 @@ reproduces exactly, and ``version_of_tag`` never raises; ``validate_policy`` (th
 check on top, which validates the ``derived`` generators of the lock file module) raises
 nothing but ``PolicyError``; a ``derived`` entry built from fuzzed text is accepted or refused
 with a ``ValidationError``, an accepted path is a plain repository path outside ``.github/``,
-and the allow-list admits no path that is neither a lock file name nor a declared one.
-Anything else is a finding.
+and the allow-list admits no path that is neither a lock file name nor a declared one;
+``classify`` reads any pull request title and body without raising and gives a kind only when
+every dependency it read has one, and the automerge ``parse_version`` never raises. Anything
+else is a finding.
 
 Run locally (Linux, needs the atheris wheel):
     uv sync --locked --group fuzz
@@ -29,6 +31,8 @@ import atheris
 from pydantic import ValidationError
 
 from lktec_bot.application.modules import validate_policy
+from lktec_bot.application.modules.automerge import versions
+from lktec_bot.application.modules.automerge.classify import classify
 from lktec_bot.application.modules.lockfiles.allowlist import admit
 from lktec_bot.application.modules.lockfiles.ecosystems import ecosystem_of
 from lktec_bot.application.modules.lockfiles.options import LockfilesOptions
@@ -90,6 +94,17 @@ def test_one_input(data: bytes) -> None:
     version = parse_version(text)
     if version is not None and format_version(version) != text:
         raise AssertionError(f"parse_version({text!r}) = {version!r} is not canonical")
+
+    # Dependency bot titles and bodies are text the bot does not control.
+    versions.parse_version(fdp.ConsumeUnicodeNoSurrogates(32))
+    title = fdp.ConsumeUnicodeNoSurrogates(96)
+    body = fdp.ConsumeUnicodeNoSurrogates(256)
+    classification = classify(title, body)
+    if classification.kind is not None and (
+        not classification.dependencies
+        or any(dep.kind is None for dep in classification.dependencies)
+    ):
+        raise AssertionError(f"classify({title!r}, {body!r}) = {classification!r}")
 
     prefix = fdp.ConsumeUnicodeNoSurrogates(4)
     suffix = fdp.ConsumeUnicodeNoSurrogates(4)

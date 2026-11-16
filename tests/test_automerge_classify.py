@@ -59,6 +59,22 @@ TITLES = [
     ("bump python from `78387bc` to `2f17fc0`", DIGEST),
     ("Bump python from `78387bc1d2e3` to `2f17fc0a9b8c` in /docker", DIGEST),
     ("chore(docker): bump node from `0123456` to `fedcba9876543210fedcba9876543210`", DIGEST),
+    # PEP 440 shapes (2026-11-16: these were skipped as "no version change could be read")
+    ("fix(deps): bump pytest-asyncio from 1.4.1.post1 to 1.5.0", MINOR),
+    ("Bump pytest-asyncio from 1.4.1.post1 to 1.5.0 in /services/api", MINOR),
+    ("Bump pytest-asyncio from 1.5.0 to 1.5.0.post1", PATCH),
+    ("Bump django from 5.2rc1 to 5.2", PATCH),
+    ("Bump numpy from 2.3.0 to 3.0.0rc1", MAJOR),
+    ("Bump thing from 1.0.dev0 to 1.0", PATCH),
+    ("Bump thing from 1!1.0 to 1!1.1", MINOR),
+    ("Bump thing from 1.0 to 1!1.0", MAJOR),
+    ("Bump thing from 1.0+cpu to 1.1+cpu", MINOR),
+    # SemVer build metadata and pre-releases on both sides
+    ("Bump vite from 7.0.0-beta.2 to 7.0.0", PATCH),
+    ("Bump esbuild from 0.25.0+sha.1 to 0.26.0+sha.2", MINOR),
+    # four-part NuGet versions, v prefixes in backticks
+    ("Bump Microsoft.Extensions.Http from 9.0.0.1 to 9.0.0.2", PATCH),
+    ("Bump actions/setup-node from `v4.1.0` to `v4.2.0`", MINOR),
 ]
 
 
@@ -76,8 +92,6 @@ def test_single_dependency_titles(title: str, kind: UpdateKind) -> None:
 UNREADABLE = [
     # a SHA-to-SHA action bump is not a version (fetch-metadata called it a major)
     "Bump actions/checkout from 3d3c42e to a1b2c3d",
-    # hex without backticks that is not a digest refresh
-    "bump python from 78387bc to 2f17fc0",
     "Bump the python group with 3 updates",
     "Update README",
     "",
@@ -85,6 +99,74 @@ UNREADABLE = [
     # a digest needs seven to 64 hex digits on both sides
     "bump python from `abc` to `def`",
 ]
+
+
+# Versions that are read but whose shape is not known: never armed, and the reason says which.
+NOT_UNDERSTOOD = [
+    ("Bump thing from 1.0!2 to 1.0", "version not understood: thing 1.0!2 to 1.0"),
+    ("Bump thing from 1.0 to 1.x", "version not understood: thing 1.0 to 1.x"),
+    (
+        "bump python from 78387bc to 2f17fc0",
+        "version not understood: python 78387bc to 2f17fc0",
+    ),
+]
+
+
+@pytest.mark.parametrize(("title", "problem"), NOT_UNDERSTOOD)
+def test_versions_of_an_unknown_shape_are_manual(title: str, problem: str) -> None:
+    result = classify(title)
+
+    assert result.kind is None
+    assert result.problem == problem
+    assert result.names  # the name is known, so an exclude list still acts on it
+    assert evaluate(result, options(majors="auto")).arm is False
+
+
+def test_a_group_with_one_member_of_an_unknown_shape_is_manual() -> None:
+    body = group_body(
+        "Updates `ruff` from 0.13.0 to 0.13.1",
+        "Updates `weird` from 1.0!2 to 1.0",
+    )
+
+    result = classify("Bump the python group with 2 updates", body)
+
+    assert result.kind is None
+    assert result.problem == "version not understood: weird 1.0!2 to 1.0"
+    assert result.names == ("ruff", "weird")
+
+
+def test_an_excluded_dependency_of_an_unknown_shape_is_excluded() -> None:
+    result = evaluate(classify("Bump Thing from 1.0!2 to 1.0"), options(exclude=["thing"]))
+
+    assert result == Eligibility(False, "excluded dependency: Thing", excluded=True)
+
+
+def test_a_group_with_a_pep440_member_is_read() -> None:
+    body = group_body(
+        "Updates `pytest-asyncio` from 1.4.1.post1 to 1.5.0",
+        "Updates `ruff` from 0.13.0 to 0.13.1",
+    )
+
+    result = classify("fix(deps): bump the python group with 2 updates", body)
+
+    assert result.kind is MINOR
+    assert [(d.name, d.old, d.new) for d in result.dependencies] == [
+        ("pytest-asyncio", "1.4.1.post1", "1.5.0"),
+        ("ruff", "0.13.0", "0.13.1"),
+    ]
+
+
+def test_a_body_sentence_with_a_post_release_is_read() -> None:
+    body = (
+        "Bumps [pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) "
+        "from 1.4.1.post1 to 1.5.0.\n"
+    )
+
+    result = classify("fix(deps): bump pytest-asyncio from 1.4.1.post1 to 1.5.0", body)
+
+    assert result.kind is MINOR
+    assert len(result.dependencies) == 1
+    assert result.dependencies[0].new == "1.5.0"
 
 
 @pytest.mark.parametrize("title", UNREADABLE)

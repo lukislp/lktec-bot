@@ -29,15 +29,22 @@ workflow documented). Each dependency update is one of
 | `major`  | a different major number                                                           |
 | `digest` | a Docker digest refresh of an unchanged tag (`` bump python from `78387bc` to `2f17fc0` ``) |
 
-Only the numeric core of a version counts (`3.13-slim` to `3.14-slim` is a minor; a `v` prefix or
-a `-rc.1` suffix does not matter). A **group** pull request (`Bump the python group with 3
+Only the epoch and the numeric release of a version count
+([`versions.py`](../../src/lktec_bot/application/modules/automerge/versions.py)): `3.13-slim` to
+`3.14-slim` is a minor, `1.4.1.post1` to `1.5.0` a minor, `8.4.0` to `8.4.1-rc.1` a patch, a
+change of the PEP 440 epoch (`1.0` to `1!1.0`) a major. A `v` prefix and any number of release
+parts (`1.2.3.4`) are fine. What follows the release numbers must still have a known shape: PEP
+440 pre, post, dev and local segments (`2.0.0rc1`, `1.4.1.post1`, `1.0.dev0`, `1.0+cpu`), SemVer
+pre-release and build metadata (`1.2.3-rc.1+build.5`) or a Docker tag variant
+(`22-alpine3.20`). A **group** pull request (`Bump the python group with 3
 updates`, members listed as ``Updates `x` from A to B`` in the body) is as severe as its most
 severe member. The release notes inside `<details>` blocks are the dependency maintainers' text
 and are never read.
 
 Whatever cannot be read with confidence is **manual**, never armed: a title without versions, a
-SHA-to-SHA action bump (without backticks it is not a version), a group whose body lists fewer
-updates than the title announces.
+SHA-to-SHA action bump (without backticks it is not a version), a version of any other shape
+(`1.x`, `1.0!2`; the reason names it: `version not understood: name old to new`), a group whose
+body lists fewer updates than the title announces or with one member that is not understood.
 
 ### Eligibility
 

@@ -16,8 +16,9 @@ What counts as routine (armed):
 * a **major** bump only with ``majors: auto``.
 
 Everything that cannot be read is manual, never armed: a SHA-to-SHA action bump (written
-without backticks, it is not a version), a title without versions, a group whose body does not
-list as many updates as the title announces. A grouped pull request is as severe as its most
+without backticks, it is not a version), a title without versions, a version whose shape
+:mod:`~lktec_bot.application.modules.automerge.versions` does not know, a group whose body does
+not list as many updates as the title announces. A grouped pull request is as severe as its most
 severe member (``digest`` < ``patch`` < ``minor`` < ``major``).
 """
 
@@ -26,27 +27,36 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import StrEnum
 
 from lktec_bot.application.modules.automerge.options import AutomergeOptions
+from lktec_bot.application.modules.automerge.versions import (
+    UpdateKind,
+    kind_of_versions,
+    most_severe,
+)
+
+__all__ = [
+    "DEPENDABOT_LOGIN",
+    "WORKFLOWS_DIR",
+    "Classification",
+    "Dependency",
+    "Eligibility",
+    "UpdateKind",
+    "classify",
+    "evaluate",
+    "excluded_names",
+    "kind_of_versions",
+    "most_severe",
+    "touches_workflow_files",
+]
 
 DEPENDABOT_LOGIN = "dependabot[bot]"
 WORKFLOWS_DIR = ".github/workflows/"
 
-
-class UpdateKind(StrEnum):
-    """How big one dependency update is, from the smallest to the largest."""
-
-    DIGEST = "digest"
-    PATCH = "patch"
-    MINOR = "minor"
-    MAJOR = "major"
-
-
-_SEVERITY: dict[UpdateKind, int] = {kind: rank for rank, kind in enumerate(UpdateKind)}
-
-# ``1``, ``1.2.3``, ``v1.2``, ``1.2.3-rc.1``, ``3.13-slim``: a numeric core, an optional suffix.
-_VERSION = r"v?[0-9]+(?:\.[0-9]+)*(?:[-+][0-9A-Za-z.-]*)?"
+# A version token as it appears in the text: starts with a digit (after an optional ``v``) and
+# runs to the next space or backtick (``1.4.1.post1``, ``2.0.0rc1``, ``1!2.0``, ``3.13-slim``).
+# Whether it is a version at all is decided by ``versions.parse_version``, not here.
+_VERSION = r"[vV]?[0-9][0-9A-Za-z.!+_-]*"
 _HEX = r"[0-9a-f]{7,64}"
 # After the new version: end of text, whitespace or the punctuation a sentence puts there.
 _END = r"(?=[\s.,;)]|$)"
@@ -71,12 +81,13 @@ _DETAILS = re.compile(r"<details>.*?</details>", re.DOTALL | re.IGNORECASE)
 
 @dataclass(frozen=True, slots=True)
 class Dependency:
-    """One dependency update read from a pull request."""
+    """One dependency update read from a pull request; ``kind`` is ``None`` when the versions
+    were read but their shape is not understood."""
 
     name: str
     old: str
     new: str
-    kind: UpdateKind
+    kind: UpdateKind | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,24 +106,6 @@ class Classification:
     @property
     def names(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(dep.name for dep in self.dependencies))
-
-
-def _major_minor(version: str) -> tuple[int, int]:
-    core = version.removeprefix("v")
-    core = re.split(r"[-+]", core, maxsplit=1)[0]
-    parts = [int(part) for part in core.split(".") if part.isdigit()]
-    return (parts[0] if parts else 0, parts[1] if len(parts) > 1 else 0)
-
-
-def kind_of_versions(old: str, new: str) -> UpdateKind:
-    """Patch, minor or major from the first two numbers; a differing major wins."""
-    old_major, old_minor = _major_minor(old)
-    new_major, new_minor = _major_minor(new)
-    if old_major != new_major:
-        return UpdateKind.MAJOR
-    if old_minor != new_minor:
-        return UpdateKind.MINOR
-    return UpdateKind.PATCH
 
 
 def _dependency(name: str, match: re.Match[str]) -> Dependency:
@@ -140,11 +133,6 @@ def _read_dependencies(title: str, body: str) -> list[Dependency]:
     return list(found.values())
 
 
-def most_severe(kinds: Iterable[UpdateKind]) -> UpdateKind | None:
-    """The largest of ``kinds`` (``None`` for none)."""
-    return max(kinds, key=_SEVERITY.__getitem__, default=None)
-
-
 def classify(title: str, body: str = "") -> Classification:
     """Classify a Dependabot pull request from its title and body."""
     dependencies = _read_dependencies(title, body)
@@ -158,9 +146,14 @@ def classify(title: str, body: str = "") -> Classification:
             f"{len(dependencies)} could be read"
         )
         return Classification(tuple(dependencies), None, grouped, problem)
-    return Classification(
-        tuple(dependencies), most_severe(dep.kind for dep in dependencies), grouped
-    )
+    unknown = [dep for dep in dependencies if dep.kind is None]
+    if unknown:
+        problem = "version not understood: " + ", ".join(
+            f"{dep.name} {dep.old} to {dep.new}" for dep in unknown
+        )
+        return Classification(tuple(dependencies), None, grouped, problem)
+    kinds = [dep.kind for dep in dependencies if dep.kind is not None]
+    return Classification(tuple(dependencies), most_severe(kinds), grouped)
 
 
 def excluded_names(names: Iterable[str], exclude: Iterable[str]) -> list[str]:
