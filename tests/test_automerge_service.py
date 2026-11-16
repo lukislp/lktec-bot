@@ -949,3 +949,228 @@ def test_sweep_without_merge_ready_leaves_a_mergeable_pull_request_to_a_person()
 
     assert (result.merged, result.ready) == (0, 1)
     assert env.state.merges == []
+
+
+# -- Renovate (renovate: true) ----------------------------------------------------------------
+
+RENOVATE = "renovate[bot]"
+RENOVATE_ON = policy("renovate: true")
+
+
+def renovate_body(*rows: str) -> str:
+    table = "\n".join(["| Package | Update | Change |", "|---|---|---|", *rows])
+    return f"This PR contains the following updates:\n\n{table}\n\n---\n"
+
+
+STUDYLIFE_PATCH = renovate_body(
+    "| [lukislp/studylife](https://redirect.github.com/lukislp/studylife) | patch "
+    "| `v3.34.4` → `v3.34.5` |"
+)
+STUDYLIFE_MAJOR = renovate_body("| lukislp/studylife | major | `v3.35.0` → `v4.0.0` |")
+
+
+def renovate_pr(
+    number: int,
+    body: str = STUDYLIFE_PATCH,
+    *,
+    ref: str = "renovate/lukislp-studylife-3.x",
+    auto: bool = False,
+    merge_state: str = "CLEAN",
+) -> PullRequest:
+    base = pr(
+        number,
+        title="fix(deps): bump studylife to v3.34.5",
+        body=body,
+        author=RENOVATE,
+        auto=auto,
+        merge_state=merge_state,
+    )
+    return replace(base, head_ref=ref, head_repo="acme/widgets")
+
+
+def test_arm_arms_a_renovate_pull_request_when_the_policy_turns_it_on() -> None:
+    env = setup(renovate_pr(7), policy_text=RENOVATE_ON)
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.ARMED
+    assert result.reason == "patch update: approved, auto-merge (squash) enabled"
+    assert env.state.log == ["approve #7", "enable-automerge #7 squash"]
+
+
+def test_arm_leaves_a_renovate_pull_request_alone_by_default() -> None:
+    env = setup(renovate_pr(7))
+
+    result = env.service.arm(7)
+
+    assert (result.decision, result.reason) == (Decision.SKIPPED, "not opened by dependabot[bot]")
+    assert env.state.log == []
+
+
+@pytest.mark.parametrize(
+    ("pull_request", "text", "reason"),
+    [
+        (renovate_pr(7, STUDYLIFE_MAJOR), RENOVATE_ON, "major update (majors: manual)"),
+        (
+            renovate_pr(7),
+            policy("renovate: true", "exclude: [lukislp/studylife]"),
+            "excluded dependency: lukislp/studylife",
+        ),
+        (
+            renovate_pr(7, ref="feature/x"),
+            RENOVATE_ON,
+            "renovate[bot] pull request not on a renovate/ branch",
+        ),
+        (
+            replace(renovate_pr(7), head_repo="someone/widgets"),
+            RENOVATE_ON,
+            "renovate[bot] pull request from another repository",
+        ),
+        (
+            renovate_pr(7, renovate_body("| x | lockFileMaintenance | `1` → `1` |")),
+            RENOVATE_ON,
+            "x: update type 'lockFileMaintenance' is manual",
+        ),
+        (
+            replace(renovate_pr(7), author_login="someone"),
+            RENOVATE_ON,
+            "not opened by dependabot[bot] or renovate[bot]",
+        ),
+    ],
+)
+def test_arm_skips_renovate_pull_requests_the_rules_leave_to_a_person(
+    pull_request: PullRequest, text: str, reason: str
+) -> None:
+    env = setup(pull_request, policy_text=text)
+
+    result = env.service.arm(7)
+
+    assert (result.decision, result.reason) == (Decision.SKIPPED, reason)
+    assert env.state.log == []
+
+
+def test_arm_arms_a_renovate_major_with_majors_auto() -> None:
+    env = setup(
+        renovate_pr(7, STUDYLIFE_MAJOR), policy_text=policy("renovate: true", "majors: auto")
+    )
+
+    assert env.service.arm(7).decision is Decision.ARMED
+
+
+def test_arm_keeps_dependabot_working_with_renovate_on_and_an_exclude_list() -> None:
+    text = policy("renovate: true", "exclude: [pymammotion, pyworxcloud, aioautomower]")
+    env = setup(
+        pr(1, title="fix(deps): bump pytest-asyncio from 1.4.1.post1 to 1.5.0"),
+        pr(2, title="Bump pymammotion from 0.5.0 to 0.5.1"),
+        renovate_pr(3, renovate_body("| pyworxcloud | patch | `5.0.0` → `5.0.1` |")),
+        renovate_pr(4),
+        policy_text=text,
+    )
+
+    decisions = {n: env.service.arm(n) for n in (1, 2, 3, 4)}
+
+    assert decisions[1].decision is Decision.ARMED
+    assert decisions[2].reason == "excluded dependency: pymammotion"
+    assert decisions[3].reason == "excluded dependency: pyworxcloud"
+    assert decisions[4].decision is Decision.ARMED
+
+
+def test_sweep_arms_renovate_and_dependabot_pull_requests_alike() -> None:
+    env = setup(
+        pr(1, title=PATCH),
+        renovate_pr(2),
+        renovate_pr(3, STUDYLIFE_MAJOR),
+        policy_text=RENOVATE_ON,
+    )
+
+    result = env.service.sweep()
+
+    assert env.state.log == [
+        "approve #1",
+        "enable-automerge #1 squash",
+        "approve #2",
+        "enable-automerge #2 squash",
+    ]
+    assert result.armed == 2
+    assert {row.number: row.note for row in result.rows}[3] == (
+        "left for a person (major update (majors: manual))"
+    )
+
+
+def test_sweep_treats_renovate_as_anyone_while_it_is_off() -> None:
+    env = setup(renovate_pr(2, merge_state="BEHIND"))
+
+    result = env.service.sweep()
+
+    assert env.state.log == ["update-branch #2"]  # as before: a pull request of anyone
+    assert result.armed == 0
+
+
+def test_sweep_does_not_rebuild_a_renovate_major_left_for_a_person() -> None:
+    env = setup(renovate_pr(2, STUDYLIFE_MAJOR, merge_state="BEHIND"), policy_text=RENOVATE_ON)
+
+    env.service.sweep()
+
+    assert env.state.log == []
+
+
+def test_sweep_updates_an_armed_renovate_pull_request_and_approves_its_head() -> None:
+    env = setup(
+        renovate_pr(2, auto=True, merge_state="BEHIND"),
+        renovate_pr(3, auto=True),
+        policy_text=RENOVATE_ON,
+    )
+
+    result = env.service.sweep()
+
+    assert env.state.log == ["update-branch #2", "approve #3"]
+    assert (result.updated, result.approved) == (1, 1)
+
+
+def test_sweep_leaves_a_conflicting_renovate_pull_request_to_renovate() -> None:
+    env = setup(renovate_pr(2, auto=True, merge_state="DIRTY"), policy_text=RENOVATE_ON)
+    env.state.pull_commits[2] = UNSIGNED
+
+    result = env.service.sweep()
+
+    assert env.state.log == []  # no @dependabot hint, no approval
+    assert env.state.created_comments == []
+    assert env.calls("list_pull_request_commits") == []
+    assert result.recreated == 0
+    assert result.rows[0].note == (
+        "conflicts with its base; Renovate rebuilds it, or tick the rebase/retry box in its body"
+    )
+
+
+def test_sweep_never_reads_commits_of_a_renovate_pull_request() -> None:
+    env = setup(renovate_pr(2, auto=True), policy_text=RENOVATE_ON)
+    env.state.pull_commits[2] = UNSIGNED
+
+    result = env.service.sweep()
+
+    assert env.calls("list_pull_request_commits") == []
+    assert env.state.log == ["approve #2"]
+    assert result.recreated == 0
+
+
+def test_sweep_keeps_an_excluded_renovate_pull_request_a_person_armed_mergeable() -> None:
+    env = setup(
+        renovate_pr(2, auto=True, merge_state="BEHIND"),
+        policy_text=policy("renovate: true", "exclude: [lukislp/studylife]"),
+    )
+
+    result = env.service.sweep()
+
+    assert env.state.log == ["update-branch #2"]
+    assert result.rows[0].note == (
+        "excluded dependency: lukislp/studylife: kept mergeable, never approved here"
+    )
+
+
+def test_renovate_with_merge_ready_is_merged_like_dependabot() -> None:
+    env = setup(renovate_pr(7), policy_text=policy("renovate: true", "merge-ready: true"))
+    env.state.auto_merge_refusals[7] = ["clean"] * 12
+
+    result = env.service.arm(7)
+
+    assert result.decision is Decision.MERGED

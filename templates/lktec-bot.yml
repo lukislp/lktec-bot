@@ -17,6 +17,10 @@ modules:
     # Dependency names (exact, case-insensitive) that are never approved or armed. A grouped
     # pull request is skipped as a whole when any member is listed.
     exclude: []
+    # true: Renovate pull requests (renovate[bot], a renovate/ branch) are armed under the same
+    # rules, read from Renovate's update table. Needs lktec-bot with Renovate support in EVERY
+    # caller pin of the repository first, or the whole policy is invalid.
+    renovate: false # true | false
 
   # Commits the lock files that the lockfiles workflow regenerated for a Dependabot pull request
   # (see docs/modules/lockfiles.md). Omit this block when the repository does not use it.

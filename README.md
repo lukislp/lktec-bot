@@ -118,8 +118,9 @@ update).
 ## Modules
 
 The [`automerge` module](docs/modules/automerge.md) ports the Dependabot auto-merge workflow
-onto the bot: `lktec-bot automerge arm` classifies a Dependabot pull request (patch, minor,
-digest refresh: routine; major: a person) and has the App approve it and enable auto-merge;
+onto the bot: `lktec-bot automerge arm` classifies a Dependabot pull request, or a Renovate one
+with `renovate: true` (patch, minor, digest refresh: routine; major: a person), and has the App
+approve it and enable auto-merge;
 `lktec-bot automerge sweep` arms what was missed, updates behind branches and asks a maintainer
 to recreate conflicting pull requests and ones with an unsigned commit (Dependabot does not take
 commands from an App). It ships as a reusable workflow

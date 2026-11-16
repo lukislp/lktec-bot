@@ -19,14 +19,17 @@ from enum import StrEnum
 
 from lktec_bot.application.gate import Gate, VerbOutcome, VerbRequest, VerbResult
 from lktec_bot.application.modules.automerge.classify import (
-    DEPENDABOT_LOGIN,
     WORKFLOWS_DIR,
     Eligibility,
-    classify,
     evaluate,
     touches_workflow_files,
 )
 from lktec_bot.application.modules.automerge.options import AutomergeOptions
+from lktec_bot.application.modules.automerge.sources import (
+    UpdateSource,
+    classify_update,
+    recognise,
+)
 from lktec_bot.domain.permissions import Target, Verb
 from lktec_bot.domain.policy import Policy
 from lktec_bot.ports.github_api import GitHubApi, PullRequest
@@ -38,6 +41,11 @@ READ_PERMISSIONS = {"pull_requests": "read"}
 # gets "Sorry, only users with push access can use that command." So the sweep cannot ask
 # for a rebuild itself; it leaves one hint per head that tells a maintainer what to do.
 RECREATE_MARKER = "automerge-recreate"
+# Renovate rebuilds a conflicting branch itself, or when the rebase/retry box in its pull request
+# body is ticked; the sweep only says so in its row.
+RENOVATE_CONFLICT_NOTE = (
+    "conflicts with its base; Renovate rebuilds it, or tick the rebase/retry box in its body"
+)
 RECREATE_HINT = (
     "lktec-bot cannot rebuild this pull request: {why}. Dependabot takes commands only from "
     "people with push access, so a maintainer needs to comment `@dependabot recreate`; the "
@@ -169,14 +177,20 @@ class _Assessment:
 @dataclass(frozen=True, slots=True)
 class _Entry:
     pull_request: PullRequest  # as of the survey, with ``merge_state`` when it was needed
-    eligibility: Eligibility | None  # Dependabot pull requests only
+    # The dependency bot that opened it (``None``: anyone else, or Renovate while it is off).
+    source: UpdateSource | None
+    eligibility: Eligibility | None  # pull requests of a dependency bot only
     # GitHub's verification reason of the first unsigned commit; read only for a Dependabot pull
     # request the sweep is responsible for that is not conflicting. ``None``: all signed.
     unsigned: str | None = None
 
     @property
     def dependabot(self) -> bool:
-        return self.pull_request.author_login == DEPENDABOT_LOGIN
+        return self.source is UpdateSource.DEPENDABOT
+
+    @property
+    def bot(self) -> bool:
+        return self.source is not None
 
     @property
     def auto_merge(self) -> bool:
@@ -205,6 +219,7 @@ class Automerge:
         self._gate = gate
         self._owner = owner
         self._repo = repo
+        self._repository = f"{owner}/{repo}"
         self._sleep = sleep
         self._poll_attempts = max(1, poll_attempts)
         self._poll_interval = poll_interval
@@ -253,9 +268,21 @@ class Automerge:
         self, api: GitHubApi, pull_request: PullRequest, options: AutomergeOptions
     ) -> Eligibility:
         """The module's decision for one open, non-draft pull request."""
-        if pull_request.author_login != DEPENDABOT_LOGIN:
-            return Eligibility(False, f"not opened by {DEPENDABOT_LOGIN}")
-        eligibility = evaluate(classify(pull_request.title, pull_request.body), options)
+        recognition = recognise(pull_request, self._repository, options)
+        if recognition.source is None:
+            return Eligibility(False, recognition.reason)
+        return self._bot_eligibility(api, pull_request, options, recognition.source)
+
+    def _bot_eligibility(
+        self,
+        api: GitHubApi,
+        pull_request: PullRequest,
+        options: AutomergeOptions,
+        source: UpdateSource,
+    ) -> Eligibility:
+        """The decision for an open, non-draft pull request of a dependency bot."""
+        classification = classify_update(source, pull_request.title, pull_request.body)
+        eligibility = evaluate(classification, options)
         if eligibility.arm and options.workflow_files == "manual":
             files = api.list_pull_request_files(self._owner, self._repo, pull_request.number)
             if touches_workflow_files(files):
@@ -353,20 +380,27 @@ class Automerge:
         for listed in api.list_pull_requests(self._owner, self._repo):
             if not listed.open or listed.draft:
                 continue
-            dependabot = listed.author_login == DEPENDABOT_LOGIN
-            eligibility = self._eligibility(api, listed, options) if dependabot else None
+            source = recognise(listed, self._repository, options).source
+            eligibility = (
+                None if source is None else self._bot_eligibility(api, listed, options, source)
+            )
             auto_merge = listed.auto_merge_method is not None
-            # A Dependabot pull request that is left for a person (excluded, a major, ...) and
-            # not armed is not touched, so its merge state is not needed either.
+            # A dependency bot's pull request that is left for a person (excluded, a major, ...)
+            # and not armed is not touched, so its merge state is not needed either.
             needs_state = (
-                auto_merge or not dependabot or (eligibility is not None and eligibility.arm)
+                auto_merge or source is None or (eligibility is not None and eligibility.arm)
             )
             pull_request = self._with_merge_state(api, listed) if needs_state else listed
             unsigned = None
-            if dependabot and needs_state and pull_request.merge_state != DIRTY:
-                # A commit GitHub does not verify can never satisfy a signature ruleset.
+            if (
+                source is UpdateSource.DEPENDABOT
+                and needs_state
+                and pull_request.merge_state != DIRTY
+            ):
+                # A commit GitHub does not verify can never satisfy a signature ruleset; the
+                # remedy (a recreate) exists for Dependabot only.
                 unsigned = self._unsigned_reason(api, pull_request.number)
-            entries.append(_Entry(pull_request, eligibility, unsigned))
+            entries.append(_Entry(pull_request, source, eligibility, unsigned))
         return _Survey(options, tuple(entries))
 
     def _unsigned_reason(self, api: GitHubApi, number: int) -> str | None:
@@ -411,7 +445,7 @@ class Automerge:
             )
             return row
 
-        if entry.dependabot and eligibility is not None and not auto_merge:
+        if entry.bot and eligibility is not None and not auto_merge:
             if eligibility.excluded:
                 row.note = f"left alone ({eligibility.reason})"
                 return row
@@ -443,15 +477,18 @@ class Automerge:
         updated = False
         # A branch the sweep has just armed is not touched: its checks are not queued yet and
         # a new head would only start them over. The next tick looks at it.
-        if pull_request.merge_state == BEHIND and (auto_merge or not entry.dependabot):
+        if pull_request.merge_state == BEHIND and (auto_merge or not entry.bot):
             if just_armed:
                 row.note = "behind its base, left for the next tick (just armed)"
             else:
                 updated = self._update_branch(number, row, warnings, counts)
 
-        if entry.dependabot and auto_merge:
+        if entry.bot and auto_merge:
             if pull_request.merge_state == DIRTY:
-                self._recreate(pull_request, row, warnings, counts)
+                if entry.dependabot:
+                    self._recreate(pull_request, row, warnings, counts)
+                else:
+                    row.note = RENOVATE_CONFLICT_NOTE
             elif (
                 not just_armed
                 and not updated
@@ -461,7 +498,7 @@ class Automerge:
             ):
                 # A new head after update-branch or a rebase needs a review of its own.
                 self._reapprove(number, row, warnings, counts)
-        if entry.dependabot and eligibility is not None and eligibility.excluded:
+        if entry.bot and eligibility is not None and eligibility.excluded:
             row.note = f"{eligibility.reason}: kept mergeable, never approved here"
         return row
 

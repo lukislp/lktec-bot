@@ -30,6 +30,10 @@ class AutomergeOptions(BaseModel):
         ``false`` (default): a pull request GitHub will not arm because it is already mergeable
         is approved and left for a person. ``true``: the ``merge`` verb merges it, bound to the
         head the decision was made on and to branch protection.
+    ``renovate``
+        ``false`` (default): only Dependabot pull requests are armed. ``true``: Renovate pull
+        requests (author ``renovate[bot]``, a ``renovate/`` branch of the repository itself)
+        are armed under the same rules, read from Renovate's update table.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -39,3 +43,4 @@ class AutomergeOptions(BaseModel):
     workflow_files: Literal["auto", "manual"] = Field(default="auto", alias="workflow-files")
     method: Literal["squash", "merge", "rebase"] = "squash"
     merge_ready: StrictBool = Field(default=False, alias="merge-ready")
+    renovate: StrictBool = False

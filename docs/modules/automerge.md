@@ -1,7 +1,7 @@
 # The `automerge` module
 
-Dependabot updates that are routine get approved by the App and armed for auto-merge; GitHub
-merges them once the required checks are green. Everything else is left to a person. This is
+Dependabot updates (and, with `renovate: true`, Renovate updates) that are routine get approved
+by the App and armed for auto-merge; GitHub merges them once the required checks are green. Everything else is left to a person. This is
 the behaviour of the shared `dependabot-auto-merge` workflow in `ci-workflows`, ported onto the
 bot: same classification, but the credential is a narrowly scoped App token instead of a
 personal access token, and nothing here ever bypasses a rule. The one case where the bot merges
@@ -46,12 +46,74 @@ SHA-to-SHA action bump (without backticks it is not a version), a version of any
 (`1.x`, `1.0!2`; the reason names it: `version not understood: name old to new`), a group whose
 body lists fewer updates than the title announces or with one member that is not understood.
 
+### Renovate pull requests
+
+With `renovate: true` a pull request is a Renovate one when all of this holds
+([`sources.py`](../../src/lktec_bot/application/modules/automerge/sources.py)):
+
+- its author is exactly `renovate[bot]`, the Mend Renovate App. A login ending in `[bot]` belongs
+  to exactly one GitHub App, so no person and no other App can open a pull request under it.
+  A self-hosted Renovate that runs under another App is not recognised.
+- its head branch starts with `renovate/`, Renovate's default `branchPrefix`;
+- its head branch lives in the repository itself, not in a fork.
+
+It is read from Renovate's own metadata, the update table at the top of the body
+([`renovate.py`](../../src/lktec_bot/application/modules/automerge/renovate.py)):
+
+```markdown
+| Package | Update | Change |
+|---|---|---|
+| [redis](https://hub.docker.com/_/redis) | digest | `71885d8` → `7958cfb` |
+| grafana/loki | patch | `3.7.9` → `3.7.10` |
+```
+
+Each row is one dependency. `Update` is Renovate's `updateType`, and `Change` holds the old and
+the new value. A row's kind is the larger of the two readings: what Renovate declares, and what
+the version reader makes of the change. A mislabelled row can therefore make an update bigger,
+never smaller. Without an `Update` column, the change alone decides.
+
+A group (several rows) is as severe as its largest member, and it is skipped as a whole when one
+member is excluded or cannot be read.
+
+These rows are manual:
+- an update type other than `major`, `minor`, `patch` or `digest` (`pin`, `pinDigest`,
+  `rollback`, `replacement`, `bump`, `lockFileMaintenance`);
+- a change without both values;
+- a version range (`^1.2.3`) or another unknown shape;
+- hex on both sides that Renovate does not call a `digest`.
+
+The title is read only when the body has no such table, and then only in the `from A to B` form.
+Renovate's default title (`update x to v1.2.3`) names only the new version, so it is not enough.
+
+The studylife release pin of `lukislp/studylife-app` (a regex manager that raises
+`studylife.version`, for example `v3.34.4` to `v3.34.5`) is an ordinary row (`lukislp/studylife`,
+`patch`) and is armed like any patch or minor.
+
+The rest is the same as for Dependabot (exclude list, majors, workflow files, `merge-ready`), with
+two differences in the sweep:
+- A conflicting Renovate pull request gets no `@dependabot recreate` hint. Renovate rebuilds its
+  own branches, or does so when someone ticks the rebase/retry box in its body; the row says so.
+- Commit signatures are not read for Renovate pull requests, because there is no recreate to
+  ask for.
+
+An armed Renovate pull request that is behind its base gets `update-branch`, like an armed
+Dependabot one.
+
+With `renovate: false` (the default) a Renovate pull request is anyone's pull request, exactly
+as before: never approved or armed, and updated when it is behind.
+
+Renovate's own `automerge` setting is independent of this. Leave it off in `renovate.json` where
+the bot merges, so that one party owns merging. Renovate would enable GitHub's auto-merge itself,
+and its `automerge` schedule and `platformAutomerge` would then be a second set of rules beside
+the policy's.
+
 ### Eligibility
 
 A pull request is armed only when all of this holds, checked in this order:
 
 1. it is open and not a draft;
-2. its author is exactly `dependabot[bot]`;
+2. its author is exactly `dependabot[bot]`, or it is a Renovate pull request as above and the
+   policy says `renovate: true`;
 3. none of its dependencies is on the `exclude` list (and, with an `exclude` list set, its
    dependencies could be read at all);
 4. the update kind is known;
@@ -170,6 +232,7 @@ verb, so a typo never changes behaviour.
 | `workflow-files` | `auto` (default), `manual`  | `manual`: a pull request that changes any file under `.github/workflows/` is never armed. |
 | `method`         | `squash` (default), `merge`, `rebase` | How GitHub merges once the checks are green (also the method of the `merge` verb). |
 | `merge-ready`    | `false` (default), `true`   | `true`: a pull request GitHub refuses to arm because it is already mergeable is merged by the `merge` verb (head-bound, `clean` state, App approval, branch protection). A boolean; any other value is an error. |
+| `renovate`       | `false` (default), `true`   | `true`: Renovate pull requests (`renovate[bot]`, a `renovate/` branch of the repository) are armed under the same rules, read from Renovate's update table. A boolean. Pin every caller of the repository to a release that knows the option before setting it: an older bot refuses the whole policy as invalid. |
 
 ## Permissions
 

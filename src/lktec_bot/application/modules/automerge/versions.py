@@ -56,6 +56,7 @@ _PEP440_REST = re.compile(
 _SEMVER_REST = re.compile(
     r"(?:-[0-9a-z]+(?:[.-][0-9a-z]+)*)?(?:\+[0-9a-z]+(?:[.-][0-9a-z]+)*)?", re.IGNORECASE
 )
+_DIGEST = re.compile(r"[0-9a-f]{7,64}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +89,11 @@ def parse_version(text: str) -> Version | None:
         return None
     release = tuple(int(part) for part in match.group("release").split("."))
     return Version(int(match.group("epoch") or 0), release, rest)
+
+
+def is_digest(text: str) -> bool:
+    """Whether ``text`` is an abbreviated or full hex digest (7 to 64 lower-case hex digits)."""
+    return _DIGEST.fullmatch(text) is not None
 
 
 def kind_of_change(old: Version, new: Version) -> UpdateKind:
