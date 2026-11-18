@@ -111,6 +111,27 @@ def version() -> None:
     typer.echo(__version__)
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        version()
+        raise typer.Exit(code=EXIT_OK)
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Print the installed version and exit.",
+        ),
+    ] = False,
+) -> None:
+    """Handle global options before running a subcommand."""
+
+
 @policy_app.command("validate")
 def policy_validate(
     file: Annotated[Path, typer.Argument(help="Path to the policy file.", exists=True)],

@@ -49,6 +49,11 @@ Dependency direction is inward only: `adapters -> ports <- application -> domain
 imports nothing from the other layers; the application imports ports and domain, never an
 adapter. The CLI is the only place where adapters are wired together (`cli.build_gate`).
 
+## Global CLI options
+
+`lktec-bot --help` lists the commands; `lktec-bot --version` prints the installed version
+and exits 0 without running a command. The existing `lktec-bot version` command is unchanged.
+
 ## The gate
 
 Every verb runs through `Gate.run`, which is the only path that holds a token. The decision

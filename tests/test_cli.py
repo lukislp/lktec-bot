@@ -86,6 +86,14 @@ def test_version() -> None:
     assert result.output.strip() == __version__
 
 
+@pytest.mark.parametrize("args", [["--version"], ["--version", "ping"]])
+def test_global_version_is_eager(args: list[str]) -> None:
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 0
+    assert result.output == f"{__version__}\n"
+
+
 def test_pretty_exceptions_are_off() -> None:
     assert app.pretty_exceptions_enable is False
     assert app.pretty_exceptions_show_locals is False
