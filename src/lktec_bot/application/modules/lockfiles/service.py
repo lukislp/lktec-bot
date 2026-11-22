@@ -9,9 +9,10 @@ command runs in a second job, with the App credentials, and treats what it is ha
 untrusted data: only plain relative paths, files that really lie inside the directory it was
 given, and only paths :func:`~lktec_bot.application.modules.lockfiles.allowlist.admit` lets
 through (a known lock file name, or a path the default branch's policy lists under
-``derived``). Nothing handed over is ever executed. What changed is decided here, by comparing
-every file with the pull request head's own copy read through the API, not by trusting a list
-from the first job. The commit itself is the ``commit`` verb, signed by GitHub.
+``derived`` or as a ``uv-pip-compile`` output). Nothing handed over is ever executed. What
+changed is decided here, by comparing every file with the pull request head's own copy read
+through the API, not by trusting a list from the first job. The commit itself is the
+``commit`` verb, signed by GitHub.
 """
 
 from __future__ import annotations
@@ -256,7 +257,11 @@ class Lockfiles:
         committed = {kinds[path] for path in changed}
         what = " and ".join(
             label
-            for kind, label in ((Kind.LOCKFILE, "lock files"), (Kind.DERIVED, "derived files"))
+            for kind, label in (
+                (Kind.LOCKFILE, "lock files"),
+                (Kind.UV_PIP, "compiled requirements files"),
+                (Kind.DERIVED, "derived files"),
+            )
             if kind in committed
         )
         text = f"lktec-bot refreshed the {what} of this pull request: {files}{link}."

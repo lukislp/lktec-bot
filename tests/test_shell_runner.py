@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from lktec_bot.adapters import shell_runner
-from lktec_bot.adapters.shell_runner import ShellRunner
+from lktec_bot.adapters.shell_runner import ProgramRunner, ShellRunner
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="needs bash and process groups")
 
@@ -105,3 +105,27 @@ def test_a_shell_that_cannot_start_is_a_failed_command(
 
     assert result.exit_code == 127
     assert "the shell could not start" in result.output
+
+
+def test_a_program_gets_its_arguments_as_they_are_and_never_through_a_shell(
+    tmp_path: Path,
+) -> None:
+    result = ProgramRunner().run(
+        ["printf", "%s|", "a b", "$HOME", "x; touch pwned.txt"], tmp_path, 30, ENV
+    )
+
+    assert (result.exit_code, result.output) == (0, "a b|$HOME|x; touch pwned.txt|")
+    assert not (tmp_path / "pwned.txt").exists()
+
+
+def test_a_program_that_cannot_start_is_a_failed_command(tmp_path: Path) -> None:
+    result = ProgramRunner().run(["/nonexistent/uv", "pip"], tmp_path, 30, ENV)
+
+    assert result.exit_code == 127
+    assert result.output.startswith("/nonexistent/uv could not start")
+
+
+def test_a_program_that_runs_too_long_is_killed(tmp_path: Path) -> None:
+    result = ProgramRunner().run(["sleep", "30"], tmp_path, 1, ENV)
+
+    assert (result.exit_code, result.timed_out) == (None, True)

@@ -16,11 +16,14 @@ name: Lockfiles (reusable)
 #             (the App id and key are referenced by the commit job only). When the policy of the
 #             DEFAULT branch declares `derived` generators, it then runs them (lktec-bot lockfiles
 #             derive) in a tree of the default branch's history that carries only the pull
-#             request's dependency files. It uploads the lock files and derived files that
-#             changed, and nothing else, as an artifact: data, never code.
+#             request's dependency files, and recompiles the `uv pip compile` outputs the policy
+#             lists (lktec-bot lockfiles uv-pip). It uploads the lock files, derived files and
+#             compiled requirements files that changed, and nothing else, as an artifact: data,
+#             never code.
 # commit:     holds the secrets, never checks out the pull request and executes nothing it was
 #             handed. It downloads the artifact, treats it as untrusted (known lock file names, or
-#             paths the default branch's policy lists under derived[].paths; nothing else),
+#             paths the default branch's policy lists under derived[].paths or as a
+#             uv-pip-compile output; nothing else),
 #             compares every file with the pull request head and commits the ones that differ
 #             with the commit verb: a GraphQL createCommitOnBranch commit onto exactly the head it
 #             validated, signed by GitHub, with contents:write only.
@@ -32,7 +35,9 @@ on:
         type: string
         default: ""
       uv-version:
-        description: uv version for regenerating uv.lock (empty = repo has no uv.lock). Must match the CI pin.
+        description: >-
+          uv version for regenerating uv.lock and the uv pip compile outputs the policy lists
+          (empty = repo has neither). Must match the CI pin.
         type: string
         default: ""
       python-version:
@@ -167,15 +172,21 @@ jobs:
       # bot's installation to repositories that declare no generator: `lktec-bot lockfiles
       # derive` parses and validates the policy itself, and the commit job admits derived files
       # only against the policy it reads through the API.
-      - name: Does the default branch's policy declare derived files
+      - name: Does the default branch's policy declare derived or uv pip compile files
         id: wants
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          if git show "origin/$DEFAULT_BRANCH:.github/lktec-bot.yml" 2>/dev/null | grep -qw derived; then
+          policy="$(git show "origin/$DEFAULT_BRANCH:.github/lktec-bot.yml" 2>/dev/null || true)"
+          if grep -qw derived <<< "$policy"; then
             echo "derived=true" >> "$GITHUB_OUTPUT"
           else
             echo "derived=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -qw uv-pip-compile <<< "$policy"; then
+            echo "uvpip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "uvpip=false" >> "$GITHUB_OUTPUT"
           fi
       - if: inputs.dotnet-version != '' && hashFiles('**/packages.lock.json') != ''
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -190,13 +201,13 @@ jobs:
             echo "restoring $proj"
             dotnet restore "$proj" --force-evaluate -p:RestoreLockedMode=false
           done
-      - if: inputs.uv-version != '' && hashFiles('uv.lock') != ''
+      - if: inputs.uv-version != '' && (hashFiles('uv.lock') != '' || steps.wants.outputs.uvpip == 'true')
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ inputs.uv-version }}
           enable-cache: false
           download-from-astral-mirror: false
-      - if: inputs.uv-version != '' && hashFiles('uv.lock') != ''
+      - if: inputs.uv-version != '' && (hashFiles('uv.lock') != '' || steps.wants.outputs.uvpip == 'true')
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
@@ -309,6 +320,12 @@ jobs:
           # Word splitting is the point here: one --upgrade-package flag per moved package.
           # shellcheck disable=SC2086
           uv lock $UPGRADES
+      # The absolute path of the uv installed above, at `uv-version`. The bot's own setup, further
+      # down, installs a uv of its own and puts it first on PATH; `lockfiles uv-pip` is handed
+      # this one so that requirements files are compiled with the version CI pins.
+      - if: inputs.uv-version != '' && steps.wants.outputs.uvpip == 'true'
+        id: uv
+        run: echo "path=$(command -v uv)" >> "$GITHUB_OUTPUT"
       - id: collect
         name: Collect the changed lock files
         run: |
@@ -342,7 +359,7 @@ jobs:
       # without failing the job: the lock files collected above are handed over either way, and
       # the derive command writes to the job summary why it handed over no derived file. It adds
       # either all of the generators' files to the handover or none.
-      - if: steps.wants.outputs.derived == 'true'
+      - if: steps.wants.outputs.derived == 'true' || steps.uv.outputs.path != ''
         id: bot
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -355,6 +372,19 @@ jobs:
         id: setup
         continue-on-error: true
         uses: ./.lktec-bot/actions/setup
+      # Requirements files that `uv pip compile` generates (docs/modules/lockfiles.md, "uv pip
+      # compile outputs"), the ones the default branch's policy lists under `uv-pip-compile`.
+      # Like the generators, it never fails the job; it runs before them so that they see the
+      # regenerated files.
+      - if: steps.setup.outcome == 'success' && steps.uv.outputs.path != ''
+        id: uvpip
+        continue-on-error: true
+        env:
+          UV: ${{ steps.uv.outputs.path }}
+          TRUSTED_REF: origin/${{ github.event.repository.default_branch }}
+          HANDOVER: ${{ runner.temp }}/handover
+        run: |
+          lktec-bot lockfiles uv-pip             --uv "$UV"             --trusted-ref "$TRUSTED_REF"             --changed-dir "$HANDOVER"
       - if: steps.setup.outcome == 'success'
         id: derive
         name: Generate the derived files the default branch's policy declares
@@ -373,8 +403,9 @@ jobs:
         env:
           LOCKFILES: ${{ steps.collect.outputs.changed }}
           DERIVED: ${{ steps.derive.outputs.derived }}
+          UVPIP: ${{ steps.uvpip.outputs.uv-pip }}
         run: |
-          if [ "$LOCKFILES" = true ] || [ "$DERIVED" = true ]; then
+          if [ "$LOCKFILES" = true ] || [ "$DERIVED" = true ] || [ "$UVPIP" = true ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"

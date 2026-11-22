@@ -13,7 +13,8 @@ name: Dependabot lock files
 # Replace <sha> with the commit of a release tag of lukislp/lktec-bot (or of your fork, then also set the
 # bot-repository input) and vX.Y.Z with that tag. Like every other reference it stays pinned by SHA.
 # Set only the tools the repository uses: dotnet-version for NuGet packages.lock.json files,
-# uv-version (matching the CI pin) for uv.lock.
+# uv-version (matching the CI pin) for uv.lock and for the `uv pip compile` outputs the policy
+# lists under uv-pip-compile.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]

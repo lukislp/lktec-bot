@@ -91,6 +91,33 @@ def test_the_generators_run_in_the_job_without_secrets_and_cannot_fail_it() -> N
     assert "lktec-bot lockfiles derive" not in _text(_jobs()["commit"])
 
 
+def test_uv_pip_runs_the_workflows_uv_in_the_job_without_secrets_and_cannot_fail_it() -> None:
+    steps = _steps("regenerate")
+    ids = [step.get("id") for step in steps]
+    uvpip = next(step for step in steps if step.get("id") == "uvpip")
+    locate = next(step for step in steps if step.get("id") == "uv")
+    setup_uv = next(
+        index for index, step in enumerate(steps) if "setup-uv" in str(step.get("uses", ""))
+    )
+    bot_setup = ids.index("setup")
+
+    assert uvpip["continue-on-error"] is True
+    assert "lktec-bot lockfiles uv-pip" in uvpip["run"]
+    assert uvpip["env"]["UV"] == "${{ steps.uv.outputs.path }}"
+    assert '--uv "$UV"' in uvpip["run"]
+    assert uvpip["env"]["TRUSTED_REF"] == "origin/${{ github.event.repository.default_branch }}"
+    # The uv is located before the bot's own setup puts another uv first on PATH, and the step
+    # runs before the generators so that they see the compiled files.
+    assert setup_uv < steps.index(locate) < bot_setup < steps.index(uvpip) < ids.index("derive")
+    assert "command -v uv" in locate["run"]
+    assert "lktec-bot lockfiles uv-pip" not in _text(_jobs()["commit"])
+    handover = next(step for step in steps if step.get("id") == "handover")
+    assert handover["env"]["UVPIP"] == "${{ steps.uvpip.outputs.uv-pip }}"
+    # The tools are installed for the policy's files too, not only when a uv.lock exists.
+    uv_steps = [step for step in steps if "setup-uv" in str(step.get("uses", ""))]
+    assert all("steps.wants.outputs.uvpip" in step["if"] for step in uv_steps)
+
+
 def test_the_policy_check_reads_the_default_branch_before_any_pull_request_code() -> None:
     steps = _steps("regenerate")
     wants = next(index for index, step in enumerate(steps) if step.get("id") == "wants")

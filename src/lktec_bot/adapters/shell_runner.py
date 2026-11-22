@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import IO
 
@@ -32,29 +32,45 @@ class ShellRunner:
     def run(
         self, command: str, cwd: Path, timeout_seconds: int, env: Mapping[str, str]
     ) -> CommandResult:
-        with tempfile.TemporaryFile() as log:
-            try:
-                process = subprocess.Popen(  # noqa: S603 - the command is the policy's, see above
-                    [*SHELL, command],
-                    cwd=cwd,
-                    env=dict(env),
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    # A group of its own, so the timeout reaches what the command started.
-                    start_new_session=True,
-                )
-            except OSError as exc:
-                return CommandResult(127, output=f"the shell could not start: {exc}")
-            timed_out = False
-            try:
-                exit_code: int | None = process.wait(timeout=timeout_seconds)
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                exit_code = None
-                _kill(process)
-                process.wait()
-            return CommandResult(exit_code, timed_out, _tail(log))
+        return _run_process([*SHELL, command], cwd, timeout_seconds, env, "the shell")
+
+
+class ProgramRunner:
+    """Implements :class:`~lktec_bot.ports.workspace.ProgramRunner`: one program with its
+    arguments, never through a shell, so no argument is ever parsed as shell syntax."""
+
+    def run(
+        self, argv: Sequence[str], cwd: Path, timeout_seconds: int, env: Mapping[str, str]
+    ) -> CommandResult:
+        return _run_process(list(argv), cwd, timeout_seconds, env, str(argv[0]))
+
+
+def _run_process(
+    argv: list[str], cwd: Path, timeout_seconds: int, env: Mapping[str, str], what: str
+) -> CommandResult:
+    with tempfile.TemporaryFile() as log:
+        try:
+            process = subprocess.Popen(  # noqa: S603 - the caller validated what it passes
+                argv,
+                cwd=cwd,
+                env=dict(env),
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                # A group of its own, so the timeout reaches what the command started.
+                start_new_session=True,
+            )
+        except OSError as exc:
+            return CommandResult(127, output=f"{what} could not start: {exc}")
+        timed_out = False
+        try:
+            exit_code: int | None = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            exit_code = None
+            _kill(process)
+            process.wait()
+        return CommandResult(exit_code, timed_out, _tail(log))
 
 
 def _kill(process: subprocess.Popen[bytes]) -> None:
