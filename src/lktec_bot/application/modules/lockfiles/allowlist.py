@@ -3,11 +3,13 @@
 
 """The one place that decides whether the module may commit a path. Pure: no I/O.
 
-Two kinds of file pass, and nothing else:
+Three kinds of file pass, and nothing else:
 
 - a **lock file**: its file name is one the module knows (``ecosystems.py``);
 - a **derived file**: its path is listed, exactly, under ``derived[].paths`` of the policy, and
-  that policy is the one of the default branch.
+  that policy is the one of the default branch;
+- a **compiled requirements file**: its path is the ``output`` of a ``uv-pip-compile`` entry of
+  that same policy. ``requirements.txt`` is not a lock file name, so this is opt-in per path.
 
 Both the job that generates the files and the job that commits them ask :func:`admit`. The
 generating job runs code the bot does not control, so its answer is a convenience; the
@@ -38,6 +40,7 @@ class Kind(StrEnum):
 
     LOCKFILE = "lock file"
     DERIVED = "derived file"
+    UV_PIP = "compiled requirements file"
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,12 +72,15 @@ def admit(path: str, size: int, options: LockfilesOptions) -> Admission:
         wrong_ecosystem = bool(options.ecosystems) and ecosystem not in options.ecosystems
         outside = bool(options.paths) and not any(within(path, scope) for scope in options.paths)
         return Admission(path, Kind.LOCKFILE, left_out=wrong_ecosystem or outside)
-    if path not in options.derived_paths():
+    kind = Kind.DERIVED if path in options.derived_paths() else None
+    if kind is None and path in options.uv_pip_outputs():
+        kind = Kind.UV_PIP
+    if kind is None:
         return Admission(
             path,
             None,
-            "neither a known lock file nor a path listed under derived[].paths in the policy "
-            "of the default branch",
+            "neither a known lock file nor a path listed under derived[].paths or "
+            "uv-pip-compile[].output in the policy of the default branch",
         )
     # The options model already refused such a declaration; checked again where it matters.
     problem = generated_path_problem(path)
@@ -84,6 +90,6 @@ def admit(path: str, size: int, options: LockfilesOptions) -> Admission:
         return Admission(
             path,
             None,
-            f"the derived file is larger than {MAX_DERIVED_FILE_BYTES // (1024 * 1024)} MiB",
+            f"the {kind.value} is larger than {MAX_DERIVED_FILE_BYTES // (1024 * 1024)} MiB",
         )
-    return Admission(path, Kind.DERIVED)
+    return Admission(path, kind)

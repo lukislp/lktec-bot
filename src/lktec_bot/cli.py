@@ -25,12 +25,13 @@ from lktec_bot.adapters.app_token import AppTokenProvider
 from lktec_bot.adapters.git_workspace import DirectoryHandover, GitWorkspace
 from lktec_bot.adapters.github_http import HttpGitHubApi
 from lktec_bot.adapters.key_source import EnvKeySource
-from lktec_bot.adapters.shell_runner import ShellRunner
+from lktec_bot.adapters.shell_runner import ProgramRunner, ShellRunner
 from lktec_bot.application.gate import Gate, VerbRequest, VerbResult, parse_repository
 from lktec_bot.application.modules import authorize, validate_policy
 from lktec_bot.application.modules.automerge.service import Automerge, Decision
 from lktec_bot.application.modules.lockfiles.derive import Derive, DeriveDecision
 from lktec_bot.application.modules.lockfiles.service import Lockfiles
+from lktec_bot.application.modules.lockfiles.uv_pip import UvPip, UvPipDecision
 from lktec_bot.application.modules.release.service import DEFAULT_SERVER, Release
 from lktec_bot.application.modules.sync.service import Sync
 from lktec_bot.application.verbs import Option, VerbSpec, handlers, load_verbs
@@ -608,6 +609,82 @@ def lockfiles_derive(
         typer.echo(neutralise_commands(os.linesep.join(report.output.splitlines())))
     if report.decision is DeriveDecision.FAILED:
         typer.echo(f"::warning title=lktec-bot derived files::{sanitize(report.reason)}")
+    say(f"{report.decision.value}: {report.reason}")
+    for note in report.notes:
+        say(f"note: {note}")
+
+
+@lockfiles_app.command("uv-pip")
+def lockfiles_uv_pip(
+    uv: Annotated[
+        Path,
+        typer.Option(
+            "--uv",
+            help="The uv program to run, as an absolute path: the one the workflow installed "
+            "at its `uv-version`.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ],
+    changed_dir: Annotated[
+        Path,
+        typer.Option(
+            "--changed-dir",
+            help="The handover directory; the compiled files are added next to the lock files.",
+            file_okay=False,
+        ),
+    ],
+    trusted_ref: Annotated[
+        str,
+        typer.Option(
+            "--trusted-ref",
+            help="The default branch as the checkout knows it, e.g. origin/main: the policy "
+            "comes from it.",
+        ),
+    ],
+    workspace: Annotated[
+        Path,
+        typer.Option(
+            "--workspace",
+            help="The checkout of the pull request head, where the files are compiled.",
+            exists=True,
+            file_okay=False,
+        ),
+    ] = Path("."),
+) -> None:
+    """Regenerate the `uv pip compile` outputs the policy lists and add them to the handover.
+
+    For the job WITHOUT secrets: it needs no App credentials and never talks to GitHub. Which
+    files are compiled comes from the policy of the default branch; the command comes from the
+    file's own header, but only as `uv pip compile <input> -o <output>` with a few allowed flags
+    and the configured paths, run without a shell. Always exit 0, so a failure never stops the
+    lock files; the summary says why a file was skipped, and the output `uv-pip` says whether
+    anything was handed over. Exit 2 on a usage error.
+    """
+    if not uv.is_absolute():
+        say("--uv: must be an absolute path", err=True)
+        raise typer.Exit(code=EXIT_USAGE)
+    try:
+        checkout = GitWorkspace(workspace, trusted_ref)
+    except WorkspaceError as exc:
+        say(f"--trusted-ref: {exc}", err=True)
+        raise typer.Exit(code=EXIT_USAGE) from None
+    report = UvPip(
+        checkout, ProgramRunner(), DirectoryHandover(changed_dir), os.environ, str(uv), workspace
+    ).run()
+    write_summary(report.to_markdown())
+    write_outputs(
+        {
+            "uv-pip": "true" if report.handed_over else "false",
+            "decision": report.decision.value,
+            "reason": report.reason,
+        }
+    )
+    if report.output:
+        # uv's own words, for the log only: untrusted, so never a workflow command.
+        typer.echo(neutralise_commands(os.linesep.join(report.output.splitlines())))
+    if report.decision is UvPipDecision.FAILED:
+        typer.echo(f"::warning title=lktec-bot uv pip compile::{sanitize(report.reason)}")
     say(f"{report.decision.value}: {report.reason}")
     for note in report.notes:
         say(f"note: {note}")

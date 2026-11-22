@@ -10,7 +10,7 @@ here talks to GitHub and nothing here ever sees the App key.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -81,6 +81,29 @@ class SourceTree(Protocol):
 
     def head(self, path: str) -> bytes | None:
         """The content of ``path`` in the pull request's checkout, ``None`` when absent."""
+        ...
+
+
+class Checkout(Protocol):
+    """The two reads ``lockfiles uv-pip`` needs of a pull request checkout. A
+    :class:`SourceTree` is one; nothing here needs the prepared tree."""
+
+    def trusted_file(self, path: str) -> str | None:
+        """The text of ``path`` on the trusted (default) branch, ``None`` when it is absent."""
+        ...
+
+    def head(self, path: str) -> bytes | None:
+        """The content of ``path`` in the pull request's checkout, ``None`` when absent or not
+        a regular file."""
+        ...
+
+
+class ProgramRunner(Protocol):
+    def run(
+        self, argv: Sequence[str], cwd: Path, timeout_seconds: int, env: Mapping[str, str]
+    ) -> CommandResult:
+        """Start the program ``argv[0]`` with the arguments ``argv[1:]``, no shell involved, in
+        ``cwd`` with exactly ``env``; kill it after the timeout."""
         ...
 
 

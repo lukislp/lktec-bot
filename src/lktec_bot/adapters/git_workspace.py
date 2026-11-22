@@ -33,12 +33,19 @@ class GitWorkspace:
     created as a detached worktree.
     """
 
-    def __init__(self, repo: Path, trusted_ref: str, tree_dir: Path) -> None:
+    def __init__(self, repo: Path, trusted_ref: str, tree_dir: Path | None = None) -> None:
         if not _REF.match(trusted_ref) or ".." in trusted_ref:
             raise WorkspaceError(f"{trusted_ref!r} is not a plain branch reference")
         self._repo = repo
         self._ref = trusted_ref
-        self._tree = tree_dir
+        self._tree_dir = tree_dir
+
+    @property
+    def _tree(self) -> Path:
+        # Only ``trusted_file`` and ``head`` work without a tree directory.
+        if self._tree_dir is None:
+            raise WorkspaceError("no tree directory was given to prepare a tree in")
+        return self._tree_dir
 
     def trusted_file(self, path: str) -> str | None:
         self._git(self._repo, "rev-parse", "--verify", "--quiet", f"{self._ref}^{{commit}}")

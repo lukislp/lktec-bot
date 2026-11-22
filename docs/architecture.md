@@ -17,14 +17,14 @@ src/lktec_bot/
     github_api.py    GitHubApi (get_file_content, create_review, enable_auto_merge, create_commit_on_branch, ..., close)
     token_provider.py TokenProvider.token_for(owner, repo, permissions) -> Token, TokenError
     key_source.py    KeySource.load() -> AppCredentials (app id + private key PEM)
-    workspace.py     SourceTree, CommandRunner, HandoverSink for `lockfiles derive` (no GitHub)
+    workspace.py     SourceTree, Checkout, CommandRunner, ProgramRunner, HandoverSink for `lockfiles derive` and `uv-pip` (no GitHub)
   adapters/      implementations of the ports
     _http_common.py  base URL, API version, User-Agent, header builder shared by both clients
     github_http.py   httpx REST + GraphQL client with the retry policy described below
     app_token.py     RS256 App JWT -> installation lookup -> narrowed installation token
     key_source.py    EnvKeySource (LKTEC_BOT_APP_ID / LKTEC_BOT_PRIVATE_KEY[_FILE]), FileKeySource
     git_workspace.py GitWorkspace (the merge-base tree for generators), DirectoryHandover
-    shell_runner.py  ShellRunner: bash with a timeout, for the generators of the job without secrets
+    shell_runner.py  ShellRunner: bash with a timeout, for the generators of the job without secrets; ProgramRunner: one program, no shell, for `uv pip compile`
   application/   the gate, the module registry and the verbs
     gate.py          Gate.run(VerbRequest) -> VerbResult; Gate.read for module reads; owner/repo validation
     modules/         module registry (__init__.py): name -> allowed verbs + options model; authorize()
